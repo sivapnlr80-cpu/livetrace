@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveTrace — Real-Time Location Sharing</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a25;
+    --border: #2a2a3a;
+    --accent: #00e5ff;
+    --accent2: #ff3d71;
+    --text: #e8e8f0;
+    --muted: #6b6b85;
+    --green: #00ff88;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page { display: none; min-height: 100vh; position: relative; z-index: 1; }
+  .page.active { display: flex; flex-direction: column; }
+
+  /* ── SHARED COMPONENTS ── */
+  .logo { display: flex; align-items: center; gap: 0.6rem; }
+  .logo-dot { width: 12px; height: 12px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 14px var(--accent); animation: blink 2s infinite; }
+  .logo-text { font-weight: 800; font-size: 1.3rem; letter-spacing: -0.02em; }
+  .logo-text span { color: var(--accent); }
+
+  .btn {
+    cursor: pointer; border: none; border-radius: 8px;
+    padding: 0.7rem 1.2rem; font-family: var(--sans);
+    font-weight: 600; font-size: 0.85rem; transition: all 0.18s;
+  }
+  .btn-accent { background: var(--accent); color: #000; }
+  .btn-accent:hover { filter: brightness(1.15); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,229,255,0.3); }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: var(--accent2); color: #fff; }
+  .btn-full { width: 100%; }
+  .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.75rem; }
+
+  /* ════════════════ HOME ════════════════ */
+  #homePage { align-items: center; justify-content: center; padding: 2rem; gap: 2.5rem; }
+  .hero { text-align: center; max-width: 500px; }
+  .hero h1 { font-size: clamp(2rem, 6vw, 3.2rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; margin-bottom: 0.8rem; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { color: var(--muted); font-family: var(--mono); font-size: 0.82rem; line-height: 1.7; }
+
+  .home-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 2rem; width: 100%; max-width: 440px;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  .label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: -0.5rem; }
+  .link-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .link-input {
+    flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.65rem 0.9rem; color: var(--text);
+    font-family: var(--mono); font-size: 0.75rem; outline: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .session-pill {
+    font-family: var(--mono); font-size: 0.88rem; color: var(--accent);
+    background: rgba(0,229,255,0.07); border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 8px; padding: 0.65rem 0.9rem;
+  }
+  .notice {
+    display: flex; gap: 0.75rem; align-items: flex-start;
+    background: rgba(0,255,136,0.06); border: 1px solid rgba(0,255,136,0.2);
+    border-radius: 8px; padding: 0.9rem; font-family: var(--mono);
+    font-size: 0.73rem; color: var(--green); line-height: 1.55;
+  }
+
+  /* ════════════════ TRACKER ════════════════ */
+  #trackerPage { align-items: center; justify-content: center; padding: 2rem; }
+  .tracker-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 2.5rem 2rem;
+    width: 100%; max-width: 400px; text-align: center;
+    display: flex; flex-direction: column; gap: 1.1rem;
+    animation: fadeUp 0.5s ease both;
+  }
+  .ping-ring {
+    width: 76px; height: 76px; border-radius: 50%;
+    background: rgba(0,229,255,0.08); border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto; position: relative;
+  }
+  .ping-ring::before, .ping-ring::after {
+    content: ''; position: absolute; border-radius: 50%;
+    border: 1px solid var(--accent); animation: sonar 2s infinite;
+  }
+  .ping-ring::before { inset: -12px; }
+  .ping-ring::after  { inset: -24px; animation-delay: 0.6s; }
+  .ping-ring svg { color: var(--accent); }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family: var(--mono); font-size: 0.7rem;
+    padding: 0.3rem 0.7rem; border-radius: 100px;
+  }
+  .badge.live  { background: rgba(0,255,136,0.1); color: var(--green);   border: 1px solid rgba(0,255,136,0.3); }
+  .badge.idle  { background: rgba(255,200,0,0.1); color: #ffc800;        border: 1px solid rgba(255,200,0,0.3); }
+  .badge.error { background: rgba(255,61,113,0.1);color: var(--accent2); border: 1px solid rgba(255,61,113,0.3); }
+  .bdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: blink 1.5s infinite; }
+
+  .tracker-card h2 { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; }
+  .tracker-card p  { color: var(--muted); font-family: var(--mono); font-size: 0.78rem; line-height: 1.6; }
+
+  .coords-box {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem; font-family: var(--mono); font-size: 0.78rem;
+    display: none; text-align: left;
+  }
+  .crow { display: flex; justify-content: space-between; padding: 0.28rem 0; border-bottom: 1px solid var(--border); }
+  .crow:last-child { border: none; }
+  .crow .k { color: var(--muted); }
+  .crow .v { color: var(--accent); }
+
+  /* ════════════════ DASHBOARD ════════════════ */
+  #dashPage { padding: 0; }
+  .dash-nav {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0.9rem 1.75rem; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 50;
+  }
+  .dash-stats { display: flex; gap: 1.5rem; align-items: center; }
+  .stat { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+  .stat strong { display: block; font-size: 1rem; color: var(--text); font-weight: 800; font-family: var(--sans); }
+
+  .dash-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .invite-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem 1.5rem;
+  }
+  .invite-bar h3 { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: 0.75rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 1rem; }
+
+  .empty {
+    grid-column: 1/-1; text-align: center; padding: 4rem 2rem; color: var(--muted);
+  }
+  .empty .icon { font-size: 3.5rem; opacity: 0.25; margin-bottom: 1rem; }
+  .empty h3 { font-size: 1.1rem; font-weight: 800; margin-bottom: 0.4rem; }
+  .empty p  { font-family: var(--mono); font-size: 0.78rem; line-height: 1.6; max-width: 300px; margin: 0 auto; }
+
+  /* ── PANEL ── */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+    animation: fadeUp 0.4s ease both; transition: border-color 0.25s;
+  }
+  .panel:hover { border-color: rgba(0,229,255,0.25); }
+  .panel.fresh { border-color: var(--accent); box-shadow: 0 0 18px rgba(0,229,255,0.12); }
+
+  .panel-head {
+    padding: 0.9rem 1.1rem; display: flex; align-items: center;
+    justify-content: space-between; border-bottom: 1px solid var(--border);
+  }
+  .panel-name { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; font-size: 0.88rem; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 800; color: #000; flex-shrink: 0;
+  }
+
+  .panel-body { padding: 1.1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+
+  .map-frame {
+    height: 130px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border); background: var(--surface2); position: relative;
+  }
+  .map-frame iframe { width: 100%; height: 100%; border: none; filter: invert(88%) hue-rotate(180deg) saturate(0.8); }
+
+  .coord-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+  .coord-cell {
+    background: var(--surface2); border-radius: 6px;
+    padding: 0.45rem 0.7rem; font-family: var(--mono); font-size: 0.7rem;
+  }
+  .coord-cell .k { color: var(--muted); display: block; margin-bottom: 0.15rem; }
+  .coord-cell .v { color: var(--accent); }
+
+  .panel-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: var(--mono); font-size: 0.68rem; color: var(--muted);
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    background: var(--surface2); border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 10px; padding: 0.8rem 1.1rem;
+    font-family: var(--mono); font-size: 0.78rem; color: var(--green);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5); z-index: 9999;
+    transform: translateY(80px); opacity: 0; transition: all 0.3s ease;
+    pointer-events: none;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  @keyframes fadeUp  { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes blink   { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+  @keyframes sonar   { 0%{transform:scale(1);opacity:.5;} 100%{transform:scale(1.6);opacity:0;} }
+</style>
+</head>
+<body>
+
+<!-- ═══ HOME ═══ -->
+<div id="homePage" class="page active">
+  <div class="logo"><div class="logo-dot"></div><div class="logo-text">Live<span>Trace</span></div></div>
+  <div class="hero">
+    <h1>Share location <em>live</em></h1>
+    <p>Generate a link → send it → see everyone's location in your dashboard.<br>Recipients always see a consent screen first.</p>
+  </div>
+  <div class="home-card">
+    <div class="label">Your Session</div>
+    <div class="session-pill" id="homeSessionId">—</div>
+    <div class="label">Shareable Link</div>
+    <div class="link-row">
+      <input class="link-input" id="homeLink" readonly />
+      <button class="btn btn-accent" onclick="copyHomeLink()">Copy</button>
+    </div>
+    <button class="btn btn-accent btn-full" onclick="gotoDash()">Open Dashboard →</button>
+    <button class="btn btn-ghost  btn-full" onclick="gotoTracker()">Preview Tracker View</button>
+    <div class="notice">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="flex-shrink:0;margin-top:1px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Recipients see a clear consent screen before any location data is collected.
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TRACKER ═══ -->
+<div id="trackerPage" class="page">
+  <div class="tracker-card">
+    <div class="logo" style="justify-content:center"><div class="logo-dot"></div><div class="logo-text">Live<span>Trace</span></div></div>
+    <div class="ping-ring">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+      </svg>
+    </div>
+    <div id="tBadge" class="badge idle"><span class="bdot"></span>Waiting for permission</div>
+    <h2 id="tTitle">Share Your Location</h2>
+    <p id="tDesc">Someone has invited you to share your real-time location. You are in control — your location is only shared while this page is open.</p>
+    <div class="coords-box" id="tCoords">
+      <div class="crow"><span class="k">Latitude</span> <span class="v" id="tLat">—</span></div>
+      <div class="crow"><span class="k">Longitude</span><span class="v" id="tLng">—</span></div>
+      <div class="crow"><span class="k">Accuracy</span><span class="v" id="tAcc">—</span></div>
+      <div class="crow"><span class="k">Updated</span>  <span class="v" id="tTime">—</span></div>
+    </div>
+    <button class="btn btn-accent btn-full" id="tStartBtn" onclick="startTracking()">✓ Allow &amp; Share Location</button>
+    <button class="btn btn-danger  btn-full" id="tStopBtn"  onclick="stopTracking()" style="display:none">✗ Stop Sharing</button>
+    <button class="btn btn-ghost   btn-full" onclick="gotoHome()">← Back</button>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD ═══ -->
+<div id="dashPage" class="page">
+  <nav class="dash-nav">
+    <div class="logo"><div class="logo-dot"></div><div class="logo-text">Live<span>Trace</span></div></div>
+    <div class="dash-stats">
+      <div class="stat"><strong id="dActive">0</strong>Active</div>
+      <div class="stat"><strong id="dTotal">0</strong>Total</div>
+      <button class="btn btn-ghost btn-sm" onclick="gotoHome()">← Home</button>
+    </div>
+  </nav>
+  <div class="dash-body">
+    <div class="invite-bar">
+      <h3>🔗 Invite people to share</h3>
+      <div class="link-row">
+        <input class="link-input" id="dLink" readonly />
+        <button class="btn btn-accent btn-sm" onclick="copyDashLink()">Copy Link</button>
+        <button class="btn btn-ghost  btn-sm" onclick="addSimUser()" style="color:var(--green);border-color:rgba(0,255,136,0.4)">+ Simulate User</button>
+        <button class="btn btn-ghost  btn-sm" onclick="clearAll()"   style="color:var(--accent2);border-color:rgba(255,61,113,0.4)">Clear All</button>
+      </div>
+    </div>
+    <div class="grid" id="panelsGrid">
+      <div class="empty">
+        <div class="icon">📡</div>
+        <h3>Waiting for connections…</h3>
+        <p>Share the link above — or click <strong style="color:var(--green)">+ Simulate User</strong> to see a live demo panel right now.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════
+// STATE  (fully in-memory, no localStorage)
+// ════════════════════════════════════════════
+const SESSION_ID = 'SES-' + Math.random().toString(36).slice(2,8).toUpperCase();
+const COLORS = ['#00e5ff','#a259ff','#ff3d71','#00ff88','#ffc800','#ff6b2b','#4d9fff','#ff9f43'];
+const NAMES  = ['Alice','Bob','Charlie','Dana','Eve','Frank','Grace','Hiro','Isla','Jake','Kai','Lena'];
+
+let watchers   = {};
+let simCount   = 0;
+let trackWatch = null;
+
+// ── Init ──
+const fakeLink = `https://livetrace.app/join?s=${SESSION_ID}`;
+document.getElementById('homeSessionId').textContent = SESSION_ID;
+document.getElementById('homeLink').value = fakeLink;
+document.getElementById('dLink').value    = fakeLink;
+
+// ════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function gotoHome()    { showPage('homePage'); }
+function gotoDash()    { showPage('dashPage'); refreshCounts(); }
+function gotoTracker() { showPage('trackerPage'); }
+
+// ════════════════════════════════════════════
+// COPY HELPERS
+// ════════════════════════════════════════════
+function copyHomeLink(){ doClipboard(fakeLink, '✓ Link copied to clipboard'); }
+function copyDashLink(){ doClipboard(fakeLink, '✓ Link copied to clipboard'); }
+function doClipboard(txt, msg){
+  navigator.clipboard.writeText(txt).catch(()=>{}).finally(()=> showToast(msg));
+}
+
+// ════════════════════════════════════════════
+// TRACKER
+// ════════════════════════════════════════════
+function startTracking(){
+  if (!navigator.geolocation){ showToast('⚠ Geolocation not supported in this browser'); return; }
+  const btn = document.getElementById('tStartBtn');
+  btn.disabled = true;
+  btn.textContent = 'Requesting…';
+
+  const opts = { enableHighAccuracy: true, timeout: 15000 };
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    onTrackerPos(pos);
+    trackWatch = navigator.geolocation.watchPosition(onTrackerPos, onTrackerErr,
+      { enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 });
+
+    setTrackerBadge('live', 'Sharing Live');
+    document.getElementById('tTitle').textContent = 'Location Active';
+    document.getElementById('tDesc').textContent  = 'Your location is being shared. Press Stop or close this page to end.';
+    document.getElementById('tStartBtn').style.display = 'none';
+    document.getElementById('tStopBtn').style.display  = '';
+    document.getElementById('tCoords').style.display   = 'block';
+  }, onTrackerErr, opts);
+}
+
+function stopTracking(){
+  if (trackWatch !== null){ navigator.geolocation.clearWatch(trackWatch); trackWatch = null; }
+  setTrackerBadge('idle','Stopped');
+  document.getElementById('tTitle').textContent = 'Sharing Stopped';
+  document.getElementById('tDesc').textContent  = 'Your location is no longer being shared.';
+  document.getElementById('tStopBtn').style.display  = 'none';
+  document.getElementById('tStartBtn').style.display = '';
+  document.getElementById('tStartBtn').disabled      = false;
+  document.getElementById('tStartBtn').textContent   = '✓ Allow & Share Location';
+  document.getElementById('tCoords').style.display   = 'none';
+}
+
+function onTrackerPos(pos){
+  const { latitude: lat, longitude: lng, accuracy: acc } = pos.coords;
+  document.getElementById('tLat').textContent  = lat.toFixed(6);
+  document.getElementById('tLng').textContent  = lng.toFixed(6);
+  document.getElementById('tAcc').textContent  = Math.round(acc) + ' m';
+  document.getElementById('tTime').textContent = new Date().toLocaleTimeString();
+  // Push to dashboard in the same session
+  upsertPanel({ id:'self', name:'You', lat, lng, acc: Math.round(acc), time: Date.now() });
+}
+
+function onTrackerErr(err){
+  setTrackerBadge('error','Permission Denied');
+  document.getElementById('tTitle').textContent = 'Location Access Denied';
+  document.getElementById('tDesc').textContent  = 'Please allow location access in your browser and try again.';
+  const btn = document.getElementById('tStartBtn');
+  btn.disabled = false;
+  btn.textContent = '✓ Allow & Share Location';
+  btn.style.display = '';
+}
+
+function setTrackerBadge(cls, label){
+  const b = document.getElementById('tBadge');
+  b.className = 'badge ' + cls;
+  b.innerHTML = `<span class="bdot"></span>${label}`;
+}
+
+// ════════════════════════════════════════════
+// DASHBOARD — PANELS
+// ════════════════════════════════════════════
+function upsertPanel(data){
+  const { id } = data;
+  const isNew = !watchers[id];
+
+  if (isNew){
+    const colorIdx = Object.keys(watchers).length % COLORS.length;
+    watchers[id] = { color: COLORS[colorIdx] };
+  }
+  Object.assign(watchers[id], data);
+
+  // Clear empty state
+  const grid = document.getElementById('panelsGrid');
+  const emptyEl = grid.querySelector('.empty');
+  if (emptyEl) emptyEl.remove();
+
+  let panel = document.getElementById('panel-' + id);
+  if (!panel){
+    panel = document.createElement('div');
+    panel.className = 'panel fresh';
+    panel.id = 'panel-' + id;
+    grid.prepend(panel);
+    setTimeout(() => panel.classList.remove('fresh'), 3000);
+    if (isNew) showToast('📍 ' + (data.name || 'Someone') + ' is now sharing their location');
+  }
+
+  renderPanel(panel, watchers[id]);
+  refreshCounts();
+}
+
+function renderPanel(el, w){
+  const ago = Math.round((Date.now() - w.time) / 1000);
+  const agoStr = ago < 3 ? 'just now' : ago + 's ago';
+  const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${w.lng-0.008},${w.lat-0.008},${w.lng+0.008},${w.lat+0.008}&layer=mapnik&marker=${w.lat},${w.lng}`;
+
+  el.innerHTML = `
+    <div class="panel-head">
+      <div class="panel-name">
+        <div class="avatar" style="background:${w.color}">${(w.name||'?')[0].toUpperCase()}</div>
+        <span>${esc(w.name)}</span>
+      </div>
+      <div class="badge live" style="font-size:.63rem;padding:.22rem .55rem">
+        <span class="bdot"></span>Live
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="map-frame">
+        <iframe src="${mapSrc}" title="Location map" loading="lazy"></iframe>
+      </div>
+      <div class="coord-grid">
+        <div class="coord-cell"><span class="k">Latitude</span> <span class="v">${w.lat.toFixed(5)}</span></div>
+        <div class="coord-cell"><span class="k">Longitude</span><span class="v">${w.lng.toFixed(5)}</span></div>
+        <div class="coord-cell"><span class="k">Accuracy</span><span class="v">±${w.acc}m</span></div>
+        <div class="coord-cell"><span class="k">Updated</span>  <span class="v">${agoStr}</span></div>
+      </div>
+      <div class="panel-foot">
+        <span>ID: ${String(w.id).slice(0,14)}</span>
+        <button class="btn btn-ghost btn-sm"
+          style="color:var(--accent2);border-color:rgba(255,61,113,0.35)"
+          onclick="removePanel('${esc(w.id)}')">Remove</button>
+      </div>
+    </div>`;
+}
+
+function removePanel(id){
+  const w = watchers[id];
+  if (w?.simTimer) clearInterval(w.simTimer);
+  delete watchers[id];
+  const el = document.getElementById('panel-' + id);
+  if (el) el.remove();
+  if (!Object.keys(watchers).length) showEmptyState();
+  refreshCounts();
+}
+
+function clearAll(){
+  Object.values(watchers).forEach(w => { if (w.simTimer) clearInterval(w.simTimer); });
+  watchers = {};
+  showEmptyState();
+  refreshCounts();
+}
+
+function showEmptyState(){
+  document.getElementById('panelsGrid').innerHTML = `
+    <div class="empty">
+      <div class="icon">📡</div>
+      <h3>Waiting for connections…</h3>
+      <p>Share the link above — or click <strong style="color:var(--green)">+ Simulate User</strong> to see a live demo panel right now.</p>
+    </div>`;
+}
+
+function refreshCounts(){
+  const c = Object.keys(watchers).length;
+  document.getElementById('dActive').textContent = c;
+  document.getElementById('dTotal').textContent  = c;
+}
+
+// ════════════════════════════════════════════
+// SIMULATE USER
+// ════════════════════════════════════════════
+function addSimUser(){
+  simCount++;
+  const id   = 'sim_' + simCount;
+  const name = NAMES[simCount % NAMES.length];
+  const bases = [
+    [40.7128,-74.006],[51.5074,-0.1278],[35.6762,139.6503],
+    [48.8566,2.3522],[19.076,72.8777],[-33.8688,151.2093],
+    [1.3521,103.8198],[55.7558,37.6176],[41.9028,12.4964]
+  ];
+  const base = bases[simCount % bases.length];
+  let lat = base[0] + (Math.random()-0.5)*0.2;
+  let lng = base[1] + (Math.random()-0.5)*0.2;
+
+  upsertPanel({ id, name, lat, lng, acc: Math.floor(Math.random()*30)+5, time: Date.now() });
+
+  // Move continuously
+  const timer = setInterval(() => {
+    if (!watchers[id]){ clearInterval(timer); return; }
+    lat += (Math.random()-0.5)*0.001;
+    lng += (Math.random()-0.5)*0.001;
+    Object.assign(watchers[id], { lat, lng, time: Date.now() });
+    const el = document.getElementById('panel-' + id);
+    if (el) renderPanel(el, watchers[id]);
+  }, 3000);
+
+  watchers[id].simTimer = timer;
+}
+
+// ════════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════════
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>
