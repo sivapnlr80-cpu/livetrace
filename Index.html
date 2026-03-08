@@ -319,10 +319,19 @@ let simCount   = 0;
 let trackWatch = null;
 
 // ── Init ──
-const fakeLink = `https://livetrace.app/join?s=${SESSION_ID}`;
+const BASE_URL  = 'https://sivapnlr80-cpu.github.io/livetrace/';
+const shareLink = `${BASE_URL}?tracker=1&s=${SESSION_ID}`;
 document.getElementById('homeSessionId').textContent = SESSION_ID;
-document.getElementById('homeLink').value = fakeLink;
-document.getElementById('dLink').value    = fakeLink;
+document.getElementById('homeLink').value = shareLink;
+document.getElementById('dLink').value    = shareLink;
+
+// ── Handle incoming URL params (tracker opens tracker view) ──
+(function routeFromURL(){
+  const p = new URLSearchParams(location.search);
+  if (p.get('tracker') === '1') {
+    showPage('trackerPage');
+  }
+})();
 
 // ════════════════════════════════════════════
 // NAVIGATION
@@ -338,8 +347,8 @@ function gotoTracker() { showPage('trackerPage'); }
 // ════════════════════════════════════════════
 // COPY HELPERS
 // ════════════════════════════════════════════
-function copyHomeLink(){ doClipboard(fakeLink, '✓ Link copied to clipboard'); }
-function copyDashLink(){ doClipboard(fakeLink, '✓ Link copied to clipboard'); }
+function copyHomeLink(){ doClipboard(shareLink, '✓ Link copied to clipboard'); }
+function copyDashLink(){ doClipboard(shareLink, '✓ Link copied to clipboard'); }
 function doClipboard(txt, msg){
   navigator.clipboard.writeText(txt).catch(()=>{}).finally(()=> showToast(msg));
 }
