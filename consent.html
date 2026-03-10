@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveTrace — Location Request</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="logo">📍</div>
+  <div class="ttl">Live<span>Trace</span></div>
+  <div class="pill" id="hdr-pill">REQUEST</div>
+</header>
+
+<div class="wrap" style="max-width:460px">
+
+  <!-- CONSENT VIEW -->
+  <div id="consent-view">
+    <div class="cpage">
+      <div class="ctop">
+        <div style="font-size:50px;margin-bottom:14px;filter:drop-shadow(0 0 18px rgba(184,255,87,.4))">📍</div>
+        <h2>Location Request</h2>
+        <p><strong id="c-from" class="gc">Someone</strong> wants to view your live location.</p>
+      </div>
+      <div class="cbody">
+        <div class="cmeta">
+          <div class="mrow"><span class="mk">From</span><span class="mv" id="c-name">—</span></div>
+          <div class="mrow"><span class="mk">Duration</span><span class="mv" id="c-dur">—</span></div>
+          <div class="mrow"><span class="mk">Purpose</span><span class="mv" id="c-pur">—</span></div>
+          <div class="mrow"><span class="mk">Session</span><span class="mv dm" id="c-sid" style="font-size:10px">—</span></div>
+        </div>
+        <div class="cnotice">⚠️ Your GPS will only be shared during this session. You can stop at any time. No data is stored after the session ends.</div>
+        <div class="cbtns">
+          <button class="btn btn-g" id="allow-btn" onclick="grantConsent()">✓ Allow &amp; Share</button>
+          <button class="btn btn-ghost" onclick="denyConsent()">✗ Decline</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHARING VIEW (shown after consent) -->
+  <div id="sharing-view" style="display:none;text-align:center;padding-top:20px">
+    <div style="font-size:50px;margin-bottom:12px;filter:drop-shadow(0 0 18px rgba(184,255,87,.4))">📡</div>
+    <h2 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:6px">Sharing Your Location</h2>
+    <p style="color:var(--dm);font-size:13px;margin-bottom:14px">Your live GPS is active and being shared securely.</p>
+    <div class="slive"><div class="pdot"></div>LIVE · <span id="elapsed">0s</span></div>
+
+    <div id="share-map" style="height:300px;border-radius:12px;border:1px solid var(--br);overflow:hidden;margin-bottom:14px;background:var(--s2)"></div>
+
+    <div class="ig" style="text-align:left">
+      <div class="ic"><div class="ic-lbl">Latitude</div><div class="ic-val" id="sh-lat">—</div></div>
+      <div class="ic"><div class="ic-lbl">Longitude</div><div class="ic-val" id="sh-lng">—</div></div>
+      <div class="ic"><div class="ic-lbl">Accuracy</div><div class="ic-val" id="sh-acc">—</div></div>
+      <div class="ic"><div class="ic-lbl">Updates</div><div class="ic-val" id="sh-cnt">0</div></div>
+    </div>
+
+    <button class="btn btn-r" onclick="stopSharing()" style="margin-top:6px">⛔ Stop &amp; Revoke</button>
+  </div>
+
+  <!-- DENIED / STOPPED VIEW -->
+  <div id="done-view" style="display:none;text-align:center;padding:60px 20px">
+    <div id="done-icon" style="font-size:50px;margin-bottom:14px">🚫</div>
+    <h2 id="done-title" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:8px">Request Declined</h2>
+    <p id="done-msg" style="color:var(--dm);font-size:13px">You declined to share your location. You may close this page.</p>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"><span id="t-ico">✅</span><span id="t-msg">Done</span></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="consent.js"></script>
+</body>
+</html>
