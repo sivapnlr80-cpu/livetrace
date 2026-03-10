@@ -82,9 +82,16 @@ window.generate = async function () {
     return;
   }
 
-  // Build consent URL — points to consent.html on same GitHub Pages site
+  // Build consent URL — embed Firebase config so recipient's device doesn't need it
+  const cfg  = loadConfig();
   const base = window.location.href.replace('index.html', '').replace(/\/$/, '');
-  const link = `${base}/consent.html?sid=${sid}`;
+  const params = new URLSearchParams({
+    sid,
+    fbUrl: cfg.url,
+    fbKey: cfg.apiKey,
+    fbPid: cfg.projectId || ''
+  });
+  const link = `${base}/consent.html?${params.toString()}`;
 
   S.sessions[sid] = { sid, name: rec, pur, dur };
   document.getElementById('link-show').textContent = link;
