@@ -1,50 +1,48 @@
-// app.js — Sender dashboard logic
-import { saveConfig, loadConfig, hasConfig, fbSet, fbDelete, fbListen, testConnection } from './firebase.js';
+// app.js — Sender dashboard
+import { saveConfig, loadConfig, hasConfig, fbSet, fbListen, testConnection } from './firebase.js';
 
 const S = {
   sessions: {},
   mainMap: null,
   mainMarkers: {},
   mapReady: false,
-  listeners: {},   // sid -> unsubscribe fn
+  listeners: {},
 };
 
 // ── INIT ──────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  loadSavedSessions();
   prefillFirebase();
+  loadSavedSessions();
 });
 
 function prefillFirebase() {
   const cfg = loadConfig();
-  if (cfg) {
-    if (cfg.url) document.getElementById('fb-url').value = cfg.url;
-    if (cfg.apiKey) document.getElementById('fb-key').value = cfg.apiKey;
+  if (cfg && cfg.dbUrl) {
+    document.getElementById('fb-url').value = cfg.dbUrl;
     if (cfg.projectId) document.getElementById('fb-pid').value = cfg.projectId;
-    showFbStatus('✅ Config loaded from storage', 'var(--g)');
+    showFbStatus('✅ Config loaded', 'var(--g)');
   }
 }
 
-// ── FIREBASE SETUP ────────────────────────────────────
+// ── FIREBASE SETUP ─────────────────────────────────────
 window.saveFirebase = function () {
   const url = document.getElementById('fb-url').value.trim();
-  const key = document.getElementById('fb-key').value.trim();
   const pid = document.getElementById('fb-pid').value.trim();
-  if (!url || !key) { showFbStatus('❌ URL and API Key are required', 'var(--r)'); return; }
-  saveConfig(url, key, pid);
-  showFbStatus('✅ Config saved!', 'var(--g)');
+  if (!url) { showFbStatus('❌ Database URL is required', 'var(--r)'); return; }
+  if (!url.startsWith('https://')) { showFbStatus('❌ URL must start with https://', 'var(--r)'); return; }
+  saveConfig(url, pid);
+  showFbStatus('✅ Saved!', 'var(--g)');
   showToast('✅', 'Firebase config saved');
 };
 
 window.testFirebase = async function () {
   const url = document.getElementById('fb-url').value.trim();
-  const key = document.getElementById('fb-key').value.trim();
   const pid = document.getElementById('fb-pid').value.trim();
-  if (!url || !key) { showFbStatus('❌ Fill in URL and API Key first', 'var(--r)'); return; }
-  saveConfig(url, key, pid);
-  showFbStatus('⏳ Testing...', 'var(--dm)');
-  const result = await testConnection();
-  showFbStatus(result.ok ? '✅ ' + result.msg : '❌ ' + result.msg, result.ok ? 'var(--g)' : 'var(--r)');
+  if (!url) { showFbStatus('❌ Enter the Database URL first', 'var(--r)'); return; }
+  saveConfig(url, pid);
+  showFbStatus('⏳ Testing connection...', 'var(--dm)');
+  const r = await testConnection();
+  showFbStatus((r.ok ? '✅ ' : '❌ ') + r.msg, r.ok ? 'var(--g)' : 'var(--r)');
 };
 
 function showFbStatus(msg, color) {
@@ -54,7 +52,7 @@ function showFbStatus(msg, color) {
   el.textContent = msg;
 }
 
-// ── GENERATE CONSENT LINK ─────────────────────────────
+// ── GENERATE CONSENT LINK ──────────────────────────────
 window.generate = async function () {
   if (!hasConfig()) {
     showToast('⚠️', 'Set up Firebase config first');
@@ -70,48 +68,47 @@ window.generate = async function () {
   const dur = document.getElementById('i-dur').value;
   const pur = document.getElementById('i-pur').value;
 
-  // Write session metadata to Firebase
   try {
-    await fbSet(`sessions/${sid}`, {
-      sid, me, rec, dur, pur,
-      status: 'pending',
-      createdAt: Date.now()
-    });
+    await fbSet(`sessions/${sid}`, { sid, me, rec, dur, pur, status: 'pending', createdAt: Date.now() });
   } catch (e) {
     showToast('❌', 'Firebase error: ' + e.message);
     return;
   }
 
-  // Build consent URL — embed Firebase config so recipient's device doesn't need it
+  // Build URL — embed dbUrl in the link so recipient's phone gets it automatically
   const cfg  = loadConfig();
-  const base = window.location.href.replace('index.html', '').replace(/\/$/, '');
-  const params = new URLSearchParams({
-    sid,
-    fbUrl: cfg.url,
-    fbKey: cfg.apiKey,
-    fbPid: cfg.projectId || ''
-  });
-  const link = `${base}/consent.html?${params.toString()}`;
+  const base = getBaseUrl();
+  const p    = new URLSearchParams({ sid, dbUrl: cfg.dbUrl });
+  const link = `${base}/consent.html?${p.toString()}`;
 
   S.sessions[sid] = { sid, name: rec, pur, dur };
+  saveSessions();
+
   document.getElementById('link-show').textContent = link;
   document.getElementById('link-result').style.display = 'block';
 
   renderSessions();
-  startListening(sid);
-  addLog(`📤 Link generated for <span class="cc">${rec}</span> — ${pur} · <span class="cc">${sid}</span>`);
-  showToast('🔗', 'Link ready! Share it with ' + rec);
+  listenForSession(sid);
+  addLog(`📤 Link for <span class="cc">${rec}</span> — ${pur} · <span class="cc">${sid}</span>`);
+  showToast('🔗', 'Link ready! Share with ' + rec);
 };
 
-// ── LINK ACTIONS ──────────────────────────────────────
+function getBaseUrl() {
+  // Works on GitHub Pages, localhost, anywhere
+  const url = window.location.href;
+  // Remove index.html if present, then remove trailing slash
+  return url.replace(/\/index\.html.*$/, '').replace(/\/$/, '');
+}
+
+// ── LINK ACTIONS ───────────────────────────────────────
 window.copyLink = function () {
   const url = document.getElementById('link-show').textContent;
   navigator.clipboard.writeText(url)
-    .then(() => showToast('📋', 'Copied to clipboard!'))
+    .then(() => showToast('📋', 'Copied!'))
     .catch(() => {
       const t = document.createElement('textarea');
-      t.value = url; t.style.position = 'fixed'; t.style.opacity = '0';
-      document.body.appendChild(t); t.focus(); t.select();
+      t.value = url; t.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(t); t.select();
       document.execCommand('copy'); document.body.removeChild(t);
       showToast('📋', 'Copied!');
     });
@@ -124,21 +121,20 @@ window.openLink = function () {
 window.shareLink = function () {
   const url = document.getElementById('link-show').textContent;
   if (navigator.share) {
-    navigator.share({ title: 'LiveTrace Location Request', text: 'Please share your live location with me.', url })
+    navigator.share({ title: 'LiveTrace — Location Request', text: 'Share your live location with me.', url })
       .catch(() => window.copyLink());
-  } else { window.copyLink(); }
+  } else window.copyLink();
 };
 
-// ── LISTEN FOR GPS UPDATES (real-time) ───────────────
-function startListening(sid) {
+// ── LISTEN FOR UPDATES ─────────────────────────────────
+function listenForSession(sid) {
   if (S.listeners[sid]) return;
 
-  // Listen for consent events
-  S.listeners[sid + '_status'] = fbListen(`sessions/${sid}/status`, (status) => {
+  S.listeners[sid + '_st'] = fbListen(`sessions/${sid}/status`, status => {
     if (status === 'granted') {
       addLog(`✅ Consent <span class="gc">GRANTED</span> by <span class="cc">${S.sessions[sid]?.name}</span>`);
       setBadge(sid, 'a');
-      showToast('✅', S.sessions[sid]?.name + ' started sharing!');
+      showToast('✅', (S.sessions[sid]?.name || 'Recipient') + ' is sharing live!');
       tab('t-map');
     }
     if (status === 'denied') {
@@ -146,17 +142,13 @@ function startListening(sid) {
       setBadge(sid, 'r');
       showToast('🚫', 'Request was declined');
     }
-    if (status === 'revoked') {
-      onRevoked(sid);
-    }
+    if (status === 'revoked') onRevoked(sid);
   });
 
-  // Listen for GPS position updates
-  S.listeners[sid + '_pos'] = fbListen(`positions/${sid}`, (pos) => {
+  S.listeners[sid + '_pos'] = fbListen(`positions/${sid}`, pos => {
     if (pos && pos.lat) {
-      S.sessions[sid].active = true;
       setBadge(sid, 'a');
-      updateMap({ ...pos, sid, name: S.sessions[sid]?.name });
+      updateMap({ ...pos, sid, name: S.sessions[sid]?.name || 'User' });
     }
   });
 }
@@ -172,26 +164,22 @@ function onRevoked(sid) {
   if (cnt === 0) document.getElementById('map-ph').style.display = 'flex';
   addLog(`⛔ Sharing stopped · <span class="rc">${sid}</span>`);
   showToast('⛔', 'Recipient stopped sharing');
-  // Clean up listeners
-  if (S.listeners[sid + '_pos']) { S.listeners[sid + '_pos'](); delete S.listeners[sid + '_pos']; }
+  ['_st','_pos'].forEach(k => { if (S.listeners[sid+k]) { S.listeners[sid+k](); delete S.listeners[sid+k]; }});
 }
 
 window.revokeSession = async function (sid) {
-  try { await fbSet(`sessions/${sid}/status`, 'admin-revoke'); } catch (e) {}
+  try { await fbSet(`sessions/${sid}/status`, 'admin-revoke'); } catch {}
   onRevoked(sid);
-  showToast('⛔', 'Session revoked');
   addLog(`⛔ You revoked session <span class="rc">${sid}</span>`);
+  showToast('⛔', 'Session revoked');
 };
 
-// ── MAP ───────────────────────────────────────────────
+// ── MAP ────────────────────────────────────────────────
 function initMap() {
-  if (S.mapReady) return;
-  S.mapReady = true;
+  if (S.mapReady) return; S.mapReady = true;
   document.getElementById('map-ph').style.display = 'none';
   const m = L.map('main-map').setView([20, 78], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap', maxZoom: 19
-  }).addTo(m);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(m);
   S.mainMap = m;
 }
 
@@ -200,11 +188,9 @@ function updateMap(msg) {
   document.getElementById('map-ph').style.display = 'none';
   document.getElementById('map-info').style.display = 'grid';
   const ll = [msg.lat, msg.lng];
-
   if (!S.mainMarkers[msg.sid]) {
     const icon = L.divIcon({ className: '', html: '<div class="lt-pin"></div>', iconSize: [16,16], iconAnchor: [8,8] });
-    S.mainMarkers[msg.sid] = L.marker(ll, { icon })
-      .addTo(S.mainMap)
+    S.mainMarkers[msg.sid] = L.marker(ll, { icon }).addTo(S.mainMap)
       .bindPopup(`<b>${msg.name}</b><br>${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}<br>±${msg.acc}m`);
   } else {
     S.mainMarkers[msg.sid].setLatLng(ll);
@@ -216,29 +202,29 @@ function updateMap(msg) {
   document.getElementById('m-lng').textContent = msg.lng.toFixed(6) + '°';
   document.getElementById('m-acc').textContent = '±' + msg.acc;
   const d = new Date(msg.ts || Date.now());
-  document.getElementById('m-upd').textContent =
-    d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  document.getElementById('m-upd').textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
 }
 
-// ── SESSIONS ─────────────────────────────────────────
+// ── SESSION LIST ───────────────────────────────────────
 function loadSavedSessions() {
   try {
-    const saved = JSON.parse(localStorage.getItem('livetrace_sessions') || '{}');
-    Object.assign(S.sessions, saved);
-    if (Object.keys(S.sessions).length > 0) {
+    const saved = JSON.parse(localStorage.getItem('lt_sessions') || '{}');
+    if (Object.keys(saved).length > 0) {
+      Object.assign(S.sessions, saved);
       renderSessions();
-      Object.keys(S.sessions).forEach(sid => startListening(sid));
+      document.getElementById('link-result').style.display = 'block';
+      Object.keys(S.sessions).forEach(sid => listenForSession(sid));
     }
   } catch {}
 }
 
 function saveSessions() {
-  localStorage.setItem('livetrace_sessions', JSON.stringify(S.sessions));
+  localStorage.setItem('lt_sessions', JSON.stringify(S.sessions));
 }
 
 function renderSessions() {
   const el = document.getElementById('s-list');
-  if (Object.keys(S.sessions).length === 0) {
+  if (!Object.keys(S.sessions).length) {
     el.innerHTML = '<div style="color:var(--dm);font-size:12px;padding:6px 0">No sessions yet.</div>';
     return;
   }
@@ -248,56 +234,44 @@ function renderSessions() {
     d.className = 'srow'; d.id = 'sr-' + s.sid;
     d.innerHTML = `
       <div class="sav">👤</div>
-      <div class="si">
-        <div class="sn">${s.name}</div>
-        <div class="sm">${s.pur} · ${s.sid}</div>
-      </div>
+      <div class="si"><div class="sn">${s.name}</div><div class="sm">${s.pur} · ${s.sid}</div></div>
       <span class="sbadge b-p" id="bd-${s.sid}">PENDING</span>
       <button class="btn btn-r" style="padding:6px 10px;font-size:10px" onclick="revokeSession('${s.sid}')">⛔ Revoke</button>`;
     el.appendChild(d);
   });
-  saveSessions();
-  document.getElementById('link-result').style.display = 'block';
 }
 
 function setBadge(sid, state) {
-  const b = document.getElementById('bd-' + sid);
-  if (!b) return;
+  const b = document.getElementById('bd-' + sid); if (!b) return;
   const m = { a: ['b-a','ACTIVE'], p: ['b-p','PENDING'], r: ['b-r','REVOKED'] };
   b.className = 'sbadge ' + (m[state]?.[0] || 'b-p');
   b.textContent = m[state]?.[1] || state.toUpperCase();
 }
 
-// ── TABS ─────────────────────────────────────────────
+// ── TABS ───────────────────────────────────────────────
 window.tab = function (id) {
-  ['t-req','t-map','t-log'].forEach(t => {
-    document.getElementById(t).style.display = t === id ? 'block' : 'none';
-  });
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('on', ['t-req','t-map','t-log'][i] === id);
-  });
+  ['t-req','t-map','t-log'].forEach(t => document.getElementById(t).style.display = t === id ? 'block' : 'none');
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', ['t-req','t-map','t-log'][i] === id));
   if (id === 't-map' && S.mainMap) setTimeout(() => S.mainMap.invalidateSize(), 80);
 };
 
-// ── LOG ───────────────────────────────────────────────
+// ── LOG ────────────────────────────────────────────────
 function addLog(msg) {
   const el = document.getElementById('audit-log');
   if (el.children.length === 1 && el.children[0].querySelector('.dm')) el.innerHTML = '';
   const d = new Date();
   const ts = d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
-  const row = document.createElement('div');
-  row.className = 'lline';
+  const row = document.createElement('div'); row.className = 'lline';
   row.innerHTML = `<span class="lt2">${ts}</span><span class="lm">${msg}</span>`;
   el.insertBefore(row, el.firstChild);
 }
 
-// ── TOAST ─────────────────────────────────────────────
+// ── TOAST ──────────────────────────────────────────────
 let _tt;
 function showToast(ico, msg) {
   clearTimeout(_tt);
   document.getElementById('t-ico').textContent = ico;
   document.getElementById('t-msg').textContent = msg;
-  const t = document.getElementById('toast');
-  t.classList.add('on');
+  const t = document.getElementById('toast'); t.classList.add('on');
   _tt = setTimeout(() => t.classList.remove('on'), 3500);
 }

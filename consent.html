@@ -17,7 +17,13 @@
 
 <div class="wrap" style="max-width:460px">
 
-  <!-- CONSENT VIEW -->
+  <!-- LOADING -->
+  <div id="loading-view" style="display:none;text-align:center;padding:60px 20px">
+    <div style="font-size:40px;margin-bottom:14px;animation:spin 1.2s linear infinite;display:inline-block">⏳</div>
+    <p style="color:var(--dm);font-size:13px">Loading session...</p>
+  </div>
+
+  <!-- CONSENT FORM -->
   <div id="consent-view">
     <div class="cpage">
       <div class="ctop">
@@ -41,33 +47,34 @@
     </div>
   </div>
 
-  <!-- SHARING VIEW (shown after consent) -->
+  <!-- SHARING ACTIVE -->
   <div id="sharing-view" style="display:none;text-align:center;padding-top:20px">
     <div style="font-size:50px;margin-bottom:12px;filter:drop-shadow(0 0 18px rgba(184,255,87,.4))">📡</div>
     <h2 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:6px">Sharing Your Location</h2>
     <p style="color:var(--dm);font-size:13px;margin-bottom:14px">Your live GPS is active and being shared securely.</p>
     <div class="slive"><div class="pdot"></div>LIVE · <span id="elapsed">0s</span></div>
-
     <div id="share-map" style="height:300px;border-radius:12px;border:1px solid var(--br);overflow:hidden;margin-bottom:14px;background:var(--s2)"></div>
-
     <div class="ig" style="text-align:left">
       <div class="ic"><div class="ic-lbl">Latitude</div><div class="ic-val" id="sh-lat">—</div></div>
       <div class="ic"><div class="ic-lbl">Longitude</div><div class="ic-val" id="sh-lng">—</div></div>
       <div class="ic"><div class="ic-lbl">Accuracy</div><div class="ic-val" id="sh-acc">—</div></div>
       <div class="ic"><div class="ic-lbl">Updates</div><div class="ic-val" id="sh-cnt">0</div></div>
     </div>
-
     <button class="btn btn-r" onclick="stopSharing()" style="margin-top:6px">⛔ Stop &amp; Revoke</button>
   </div>
 
-  <!-- DENIED / STOPPED VIEW -->
+  <!-- DONE / ERROR -->
   <div id="done-view" style="display:none;text-align:center;padding:60px 20px">
-    <div id="done-icon" style="font-size:50px;margin-bottom:14px">🚫</div>
-    <h2 id="done-title" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:8px">Request Declined</h2>
-    <p id="done-msg" style="color:var(--dm);font-size:13px">You declined to share your location. You may close this page.</p>
+    <div id="done-icon" style="font-size:50px;margin-bottom:14px">✅</div>
+    <h2 id="done-title" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px">Done</h2>
+    <p id="done-msg" style="color:var(--dm);font-size:13px;line-height:1.7;white-space:pre-wrap"></p>
   </div>
 
 </div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
 
 <div class="toast" id="toast"><span id="t-ico">✅</span><span id="t-msg">Done</span></div>
 

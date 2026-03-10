@@ -1,96 +1,91 @@
-// firebase.js — Firebase Realtime Database helper
-// Uses the REST API (no SDK needed, works with ES modules on GitHub Pages)
+// firebase.js — Firebase Realtime Database via REST API
+// Works on GitHub Pages with no build step required.
+// Uses open database rules (no auth token needed for read/write).
 
-const CONFIG_KEY = 'livetrace_firebase_config';
+const CONFIG_KEY = 'livetrace_fb_cfg';
 
-export function saveConfig(url, apiKey, projectId) {
-  const cfg = { url: url.replace(/\/$/, ''), apiKey, projectId };
+// ── CONFIG ────────────────────────────────────────────
+export function saveConfig(dbUrl, projectId) {
+  // dbUrl: e.g. https://my-project-default-rtdb.firebaseio.com
+  const cfg = { dbUrl: dbUrl.replace(/\/$/, ''), projectId: projectId || '' };
   localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
   return cfg;
 }
 
 export function loadConfig() {
-  try {
-    return JSON.parse(localStorage.getItem(CONFIG_KEY));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(CONFIG_KEY)); }
+  catch { return null; }
 }
 
 export function hasConfig() {
-  const cfg = loadConfig();
-  return !!(cfg && cfg.url && cfg.apiKey);
+  const c = loadConfig();
+  return !!(c && c.dbUrl && c.dbUrl.startsWith('https://'));
 }
 
-// Write to Firebase REST API
+function getUrl(path) {
+  const c = loadConfig();
+  if (!c || !c.dbUrl) throw new Error('No Firebase config');
+  return `${c.dbUrl}/${path}.json`;
+}
+
+// ── CRUD ──────────────────────────────────────────────
 export async function fbSet(path, data) {
-  const cfg = loadConfig();
-  if (!cfg) throw new Error('No Firebase config');
-  const res = await fetch(`${cfg.url}/${path}.json?auth=${cfg.apiKey}`, {
+  const res = await fetch(getUrl(path), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error(`Firebase write failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Firebase ${res.status}: ${body}`);
+  }
   return res.json();
 }
 
-// Read once from Firebase
 export async function fbGet(path) {
-  const cfg = loadConfig();
-  if (!cfg) throw new Error('No Firebase config');
-  const res = await fetch(`${cfg.url}/${path}.json?auth=${cfg.apiKey}`);
-  if (!res.ok) throw new Error(`Firebase read failed: ${res.status}`);
+  const res = await fetch(getUrl(path));
+  if (!res.ok) throw new Error(`Firebase read ${res.status}`);
   return res.json();
 }
 
-// Delete from Firebase
-export async function fbDelete(path) {
-  const cfg = loadConfig();
-  if (!cfg) return;
-  await fetch(`${cfg.url}/${path}.json?auth=${cfg.apiKey}`, { method: 'DELETE' });
-}
-
-// Subscribe to changes via SSE (Firebase streaming)
+// ── REALTIME LISTENER (Server-Sent Events) ────────────
 export function fbListen(path, callback) {
-  const cfg = loadConfig();
-  if (!cfg) return () => {};
+  let es;
+  let stopped = false;
 
-  const url = `${cfg.url}/${path}.json?auth=${cfg.apiKey}`;
-  const es = new EventSource(url);
-
-  es.addEventListener('put', e => {
+  function connect() {
+    if (stopped) return;
     try {
-      const { data } = JSON.parse(e.data);
-      if (data !== null) callback(data);
+      const c = loadConfig();
+      if (!c || !c.dbUrl) return;
+      es = new EventSource(`${c.dbUrl}/${path}.json`);
+      es.addEventListener('put', e => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.data !== null && msg.data !== undefined) callback(msg.data);
+        } catch {}
+      });
+      es.onerror = () => {
+        es.close();
+        if (!stopped) setTimeout(connect, 3000); // reconnect
+      };
     } catch {}
-  });
+  }
 
-  es.addEventListener('patch', e => {
-    try {
-      const { data } = JSON.parse(e.data);
-      if (data !== null) callback(data);
-    } catch {}
-  });
-
-  es.onerror = () => {
-    // Auto-reconnects
-  };
-
-  // Return unsubscribe function
-  return () => es.close();
+  connect();
+  return () => { stopped = true; if (es) es.close(); };
 }
 
-// Test connection
+// ── TEST ──────────────────────────────────────────────
 export async function testConnection() {
-  const cfg = loadConfig();
-  if (!cfg) return { ok: false, msg: 'No config saved' };
+  const c = loadConfig();
+  if (!c || !c.dbUrl) return { ok: false, msg: 'No config saved yet.' };
   try {
-    const res = await fetch(`${cfg.url}/.json?shallow=true&auth=${cfg.apiKey}`);
-    if (res.status === 200 || res.status === 204) return { ok: true, msg: 'Connected!' };
-    if (res.status === 401) return { ok: false, msg: 'Auth failed — check your API key' };
-    if (res.status === 404) return { ok: false, msg: 'Database not found — check your URL' };
-    return { ok: false, msg: `HTTP ${res.status}` };
+    const res = await fetch(`${c.dbUrl}/.json?shallow=true`);
+    if (res.ok) return { ok: true, msg: 'Connected to Firebase ✅' };
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, msg: 'Permission denied — set Realtime DB rules to allow read/write (test mode).' };
+    return { ok: false, msg: `HTTP ${res.status} — check your Database URL.` };
   } catch (e) {
     return { ok: false, msg: 'Network error: ' + e.message };
   }
