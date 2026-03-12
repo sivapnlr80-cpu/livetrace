@@ -8,7 +8,6 @@
 <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-
 <header class="hdr">
   <div class="logo">📍</div>
   <div class="ttl">Live<span>Trace</span></div>
@@ -22,20 +21,20 @@
     <button class="tab" onclick="tab('t-log')">📋 Audit Log</button>
   </div>
 
-  <!-- TAB: REQUEST -->
+  <!-- REQUEST TAB -->
   <div id="t-req">
-
-    <div class="stitle">Step 1 — Firebase Setup <span style="color:var(--a);font-size:9px;margin-left:6px">(one-time)</span></div>
+    <div class="stitle">Step 1 — Firebase Setup <span style="color:var(--a);font-size:9px;margin-left:6px">(one-time only)</span></div>
     <div class="card" id="firebase-setup-card">
-      <p style="font-size:12px;color:var(--dm);margin-bottom:14px;line-height:1.8">
-        LiveTrace uses <strong style="color:var(--tx)">Firebase Realtime Database</strong> (free) to relay GPS across devices.<br>
-        <a href="https://console.firebase.google.com/" target="_blank" style="color:var(--c)">1. Create a Firebase project →</a>
-        enable <strong style="color:var(--tx)">Realtime Database</strong> in test mode.<br>
-        Copy your Database URL (looks like <code>https://your-app-default-rtdb.firebaseio.com</code>) and paste below.
+      <p style="font-size:12px;color:var(--dm);margin-bottom:14px;line-height:1.9">
+        <strong style="color:var(--tx)">How to get your Database URL:</strong><br>
+        1. Go to <a href="https://console.firebase.google.com/" target="_blank" style="color:var(--c)">console.firebase.google.com</a><br>
+        2. Create project → <strong style="color:var(--tx)">Realtime Database</strong> → <strong style="color:var(--tx)">Create Database</strong><br>
+        3. Choose <strong style="color:var(--g)">Start in test mode</strong> → Enable<br>
+        4. Copy the URL shown (e.g. <code>https://myapp-default-rtdb.firebaseio.com</code>)
       </p>
       <div class="fg" style="margin-bottom:12px">
         <label>Firebase Realtime Database URL</label>
-        <input id="fb-url" placeholder="https://your-app-default-rtdb.firebaseio.com"/>
+        <input id="fb-url" placeholder="https://your-app-default-rtdb.firebaseio.com" type="url"/>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="btn btn-g" onclick="saveFirebase()">💾 Save</button>
@@ -82,18 +81,18 @@
           <button class="btn btn-ghost" onclick="shareLink()">📤 Share via...</button>
         </div>
         <div class="link-note">
-          ✅ Send this link via <strong style="color:var(--tx)">WhatsApp, Telegram, or Email</strong>.
-          The recipient opens it on their phone, taps <strong style="color:var(--g)">Allow &amp; Share</strong>,
-          and their GPS appears on your Live Map instantly. No app install needed.
+          ✅ Send via <strong style="color:var(--tx)">WhatsApp / Telegram / Email</strong>.
+          Recipient opens on their phone → taps <strong style="color:var(--g)">Allow &amp; Share</strong>
+          → their GPS appears on your Live Map. No app install needed.
         </div>
       </div>
 
-      <div class="stitle">Active Sessions</div>
+      <div class="stitle">Sessions</div>
       <div id="s-list"></div>
     </div>
   </div>
 
-  <!-- TAB: MAP -->
+  <!-- MAP TAB -->
   <div id="t-map" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div class="stitle" style="margin-bottom:0;flex:1">Live Positions</div>
@@ -113,7 +112,7 @@
     </div>
   </div>
 
-  <!-- TAB: LOG -->
+  <!-- LOG TAB -->
   <div id="t-log" style="display:none">
     <div class="stitle">Audit Trail</div>
     <div class="logwrap" id="audit-log">
@@ -123,7 +122,6 @@
 </div>
 
 <div class="toast" id="toast"><span id="t-ico">✅</span><span id="t-msg">Done</span></div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module" src="app.js"></script>
 </body>

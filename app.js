@@ -1,219 +1,227 @@
 // app.js — Sender dashboard
-import { saveConfig, loadConfig, hasConfig, fbSet, fbListen, testConnection } from './firebase.js';
+import { saveDbUrl, getDbUrl, hasDbUrl, dbSet, dbWatch, testDb } from './firebase.js';
 
 const S = {
-  sessions: {},
-  mainMap: null,
-  mainMarkers: {},
+  sessions: {},   // sid -> { sid, name, pur, dur }
+  stoppers: {},   // sid -> [stopFn, stopFn]
+  map:      null,
+  markers:  {},
   mapReady: false,
-  listeners: {},
 };
 
 // ── INIT ──────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  prefillFirebase();
-  loadSavedSessions();
+addEventListener('DOMContentLoaded', () => {
+  const saved = getDbUrl();
+  if (saved) { id('fb-url').value = saved; setFbStatus('✅ Config loaded', 'var(--g)'); }
+  loadSessions();
 });
 
-function prefillFirebase() {
-  const cfg = loadConfig();
-  if (cfg && cfg.dbUrl) {
-    document.getElementById('fb-url').value = cfg.dbUrl;
-    if (cfg.projectId) document.getElementById('fb-pid').value = cfg.projectId;
-    showFbStatus('✅ Config loaded', 'var(--g)');
-  }
-}
-
 // ── FIREBASE SETUP ─────────────────────────────────────
-window.saveFirebase = function () {
-  const url = document.getElementById('fb-url').value.trim();
-  const pid = document.getElementById('fb-pid').value.trim();
-  if (!url) { showFbStatus('❌ Database URL is required', 'var(--r)'); return; }
-  if (!url.startsWith('https://')) { showFbStatus('❌ URL must start with https://', 'var(--r)'); return; }
-  saveConfig(url, pid);
-  showFbStatus('✅ Saved!', 'var(--g)');
-  showToast('✅', 'Firebase config saved');
+window.saveFirebase = () => {
+  const url = id('fb-url').value.trim();
+  if (!url.startsWith('https://')) { setFbStatus('❌ Must start with https://', 'var(--r)'); return; }
+  saveDbUrl(url);
+  setFbStatus('✅ Saved!', 'var(--g)');
+  toast('✅', 'Firebase URL saved');
 };
 
-window.testFirebase = async function () {
-  const url = document.getElementById('fb-url').value.trim();
-  const pid = document.getElementById('fb-pid').value.trim();
-  if (!url) { showFbStatus('❌ Enter the Database URL first', 'var(--r)'); return; }
-  saveConfig(url, pid);
-  showFbStatus('⏳ Testing connection...', 'var(--dm)');
-  const r = await testConnection();
-  showFbStatus((r.ok ? '✅ ' : '❌ ') + r.msg, r.ok ? 'var(--g)' : 'var(--r)');
+window.testFirebase = async () => {
+  const url = id('fb-url').value.trim();
+  if (url) saveDbUrl(url);
+  setFbStatus('⏳ Testing…', 'var(--dm)');
+  const r = await testDb(url || getDbUrl());
+  setFbStatus((r.ok ? '✅ ' : '❌ ') + r.msg, r.ok ? 'var(--g)' : 'var(--r)');
 };
 
-function showFbStatus(msg, color) {
-  const el = document.getElementById('fb-status');
-  el.style.display = 'block';
-  el.style.color = color;
-  el.textContent = msg;
+function setFbStatus(msg, color) {
+  const el = id('fb-status');
+  el.style.display = 'block'; el.style.color = color; el.textContent = msg;
 }
 
-// ── GENERATE CONSENT LINK ──────────────────────────────
-window.generate = async function () {
-  if (!hasConfig()) {
-    showToast('⚠️', 'Set up Firebase config first');
-    document.getElementById('firebase-setup-card').scrollIntoView({ behavior: 'smooth' });
-    return;
+// ── GENERATE LINK ──────────────────────────────────────
+window.generate = async () => {
+  const dbUrl = getDbUrl();
+  if (!hasDbUrl()) {
+    toast('⚠️', 'Save your Firebase URL first');
+    id('firebase-setup-card').scrollIntoView({ behavior: 'smooth' }); return;
   }
-  const me  = document.getElementById('i-me').value.trim();
-  const rec = document.getElementById('i-rec').value.trim();
-  if (!me)  { showToast('⚠️', 'Enter your name'); return; }
-  if (!rec) { showToast('⚠️', 'Enter recipient name'); return; }
+  const me  = id('i-me').value.trim();
+  const rec = id('i-rec').value.trim();
+  if (!me)  { toast('⚠️', 'Enter your name'); return; }
+  if (!rec) { toast('⚠️', 'Enter recipient name'); return; }
 
   const sid = 'LT' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase();
-  const dur = document.getElementById('i-dur').value;
-  const pur = document.getElementById('i-pur').value;
+  const dur = id('i-dur').value;
+  const pur = id('i-pur').value;
 
   try {
-    await fbSet(`sessions/${sid}`, { sid, me, rec, dur, pur, status: 'pending', createdAt: Date.now() });
-  } catch (e) {
-    showToast('❌', 'Firebase error: ' + e.message);
-    return;
-  }
+    await dbSet(dbUrl, `sessions/${sid}`, { sid, me, rec, dur, pur, status: 'pending', ts: Date.now() });
+  } catch(e) { toast('❌', 'Firebase error: ' + e.message); return; }
 
-  // Build URL — embed dbUrl in the link so recipient's phone gets it automatically
-  const cfg  = loadConfig();
-  const base = getBaseUrl();
-  const p    = new URLSearchParams({ sid, dbUrl: cfg.dbUrl });
-  const link = `${base}/consent.html?${p.toString()}`;
+  // Embed dbUrl in the link — recipient's phone reads it from URL, no setup needed
+  const base = getBase();
+  const link = `${base}/consent.html?sid=${sid}&dbUrl=${encodeURIComponent(dbUrl)}`;
 
-  S.sessions[sid] = { sid, name: rec, pur, dur };
+  id('link-show').textContent = link;
+  id('link-result').style.display = 'block';
+
+  S.sessions[sid] = { sid, name: rec, pur, dur, status: 'pending' };
   saveSessions();
-
-  document.getElementById('link-show').textContent = link;
-  document.getElementById('link-result').style.display = 'block';
-
   renderSessions();
-  listenForSession(sid);
+  startWatching(sid);
   addLog(`📤 Link for <span class="cc">${rec}</span> — ${pur} · <span class="cc">${sid}</span>`);
-  showToast('🔗', 'Link ready! Share with ' + rec);
+  toast('🔗', 'Link ready — share with ' + rec);
 };
 
-function getBaseUrl() {
-  // Works on GitHub Pages, localhost, anywhere
-  const url = window.location.href;
-  // Remove index.html if present, then remove trailing slash
-  return url.replace(/\/index\.html.*$/, '').replace(/\/$/, '');
+function getBase() {
+  return location.href.split('?')[0].replace(/\/index\.html$/, '').replace(/\/$/, '');
 }
 
-// ── LINK ACTIONS ───────────────────────────────────────
-window.copyLink = function () {
-  const url = document.getElementById('link-show').textContent;
+// ── COPY / SHARE ───────────────────────────────────────
+window.copyLink = () => {
+  const url = id('link-show').textContent;
   navigator.clipboard.writeText(url)
-    .then(() => showToast('📋', 'Copied!'))
-    .catch(() => {
+    .then(() => toast('📋', 'Copied!'))
+    .catch(() => { // fallback
       const t = document.createElement('textarea');
       t.value = url; t.style.cssText = 'position:fixed;opacity:0';
       document.body.appendChild(t); t.select();
       document.execCommand('copy'); document.body.removeChild(t);
-      showToast('📋', 'Copied!');
+      toast('📋', 'Copied!');
     });
 };
-
-window.openLink = function () {
-  window.open(document.getElementById('link-show').textContent, '_blank');
+window.openLink  = () => window.open(id('link-show').textContent, '_blank');
+window.shareLink = () => {
+  const url = id('link-show').textContent;
+  if (navigator.share) navigator.share({ title:'LiveTrace', url }).catch(() => window.copyLink());
+  else window.copyLink();
 };
 
-window.shareLink = function () {
-  const url = document.getElementById('link-show').textContent;
-  if (navigator.share) {
-    navigator.share({ title: 'LiveTrace — Location Request', text: 'Share your live location with me.', url })
-      .catch(() => window.copyLink());
-  } else window.copyLink();
-};
+// ── WATCH SESSION ──────────────────────────────────────
+// Poll TWO paths: sessions/${sid} (for status) and positions/${sid} (for GPS)
+function startWatching(sid) {
+  if (S.stoppers[sid]) return;
+  const dbUrl = getDbUrl();
 
-// ── LISTEN FOR UPDATES ─────────────────────────────────
-function listenForSession(sid) {
-  if (S.listeners[sid]) return;
+  // Watch the whole session object — catches status changes
+  const stopSession = dbWatch(dbUrl, `sessions/${sid}`, session => {
+    if (!session) return;
+    const status = session.status;
 
-  S.listeners[sid + '_st'] = fbListen(`sessions/${sid}/status`, status => {
     if (status === 'granted') {
-      addLog(`✅ Consent <span class="gc">GRANTED</span> by <span class="cc">${S.sessions[sid]?.name}</span>`);
       setBadge(sid, 'a');
-      showToast('✅', (S.sessions[sid]?.name || 'Recipient') + ' is sharing live!');
-      tab('t-map');
+      addLog(`✅ <span class="gc">GRANTED</span> by <span class="cc">${S.sessions[sid]?.name}</span>`);
+      toast('✅', (S.sessions[sid]?.name || 'Recipient') + ' is sharing live!');
+      switchTab('t-map');
     }
     if (status === 'denied') {
-      addLog(`❌ Request <span class="rc">DECLINED</span> · ${sid}`);
       setBadge(sid, 'r');
-      showToast('🚫', 'Request was declined');
+      addLog(`❌ <span class="rc">DECLINED</span> · ${sid}`);
+      toast('🚫', 'Location request declined');
     }
-    if (status === 'revoked') onRevoked(sid);
-  });
+    if (status === 'revoked') {
+      handleRevoked(sid);
+    }
+    // Update local session cache
+    if (S.sessions[sid]) S.sessions[sid].status = status;
+    renderSessionRow(sid);
+  }, 2500);
 
-  S.listeners[sid + '_pos'] = fbListen(`positions/${sid}`, pos => {
-    if (pos && pos.lat) {
-      setBadge(sid, 'a');
-      updateMap({ ...pos, sid, name: S.sessions[sid]?.name || 'User' });
-    }
-  });
+  // Watch positions separately — GPS updates come here
+  const stopPos = dbWatch(dbUrl, `positions/${sid}`, pos => {
+    if (!pos || pos.cleared || !pos.lat) return;
+    setBadge(sid, 'a');
+    updateMap(sid, pos);
+    updatePosText(sid, pos);
+  }, 2500);
+
+  S.stoppers[sid] = [stopSession, stopPos];
 }
 
-function onRevoked(sid) {
+function handleRevoked(sid) {
+  // Stop pollers
+  if (S.stoppers[sid]) { S.stoppers[sid].forEach(f => f()); delete S.stoppers[sid]; }
+  // Remove map marker
+  if (S.map && S.markers[sid]) { S.map.removeLayer(S.markers[sid]); delete S.markers[sid]; }
   setBadge(sid, 'r');
-  if (S.mainMap && S.mainMarkers[sid]) {
-    S.mainMap.removeLayer(S.mainMarkers[sid]);
-    delete S.mainMarkers[sid];
-  }
-  const cnt = Object.keys(S.mainMarkers).length;
-  document.getElementById('map-count').textContent = cnt + ' tracking';
-  if (cnt === 0) document.getElementById('map-ph').style.display = 'flex';
+  if (S.sessions[sid]) S.sessions[sid].status = 'revoked';
+  renderSessionRow(sid);
+  saveSessions();
+  const cnt = Object.keys(S.markers).length;
+  id('map-count').textContent = cnt + ' tracking';
+  if (!cnt) id('map-ph').style.display = 'flex';
   addLog(`⛔ Sharing stopped · <span class="rc">${sid}</span>`);
-  showToast('⛔', 'Recipient stopped sharing');
-  ['_st','_pos'].forEach(k => { if (S.listeners[sid+k]) { S.listeners[sid+k](); delete S.listeners[sid+k]; }});
+  toast('⛔', 'Recipient stopped sharing');
 }
 
-window.revokeSession = async function (sid) {
-  try { await fbSet(`sessions/${sid}/status`, 'admin-revoke'); } catch {}
-  onRevoked(sid);
-  addLog(`⛔ You revoked session <span class="rc">${sid}</span>`);
-  showToast('⛔', 'Session revoked');
+// ── REVOKE FROM DASHBOARD ──────────────────────────────
+window.revokeSession = async (sid) => {
+  const dbUrl = getDbUrl();
+  try { await dbSet(dbUrl, `sessions/${sid}/status`, 'admin-revoke'); } catch {}
+  handleRevoked(sid);
+  addLog(`⛔ You revoked <span class="rc">${sid}</span>`);
+  toast('⛔', 'Session revoked');
+};
+
+// ── DELETE SESSION FROM LIST ───────────────────────────
+window.deleteSession = (sid) => {
+  if (S.stoppers[sid]) { S.stoppers[sid].forEach(f => f()); delete S.stoppers[sid]; }
+  if (S.map && S.markers[sid]) { S.map.removeLayer(S.markers[sid]); delete S.markers[sid]; }
+  delete S.sessions[sid];
+  saveSessions();
+  renderSessions();
+  id('map-count').textContent = Object.keys(S.markers).length + ' tracking';
+  toast('🗑️', 'Session removed');
 };
 
 // ── MAP ────────────────────────────────────────────────
 function initMap() {
   if (S.mapReady) return; S.mapReady = true;
-  document.getElementById('map-ph').style.display = 'none';
+  id('map-ph').style.display = 'none';
   const m = L.map('main-map').setView([20, 78], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(m);
-  S.mainMap = m;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(m);
+  S.map = m;
 }
 
-function updateMap(msg) {
+function updateMap(sid, pos) {
   initMap();
-  document.getElementById('map-ph').style.display = 'none';
-  document.getElementById('map-info').style.display = 'grid';
-  const ll = [msg.lat, msg.lng];
-  if (!S.mainMarkers[msg.sid]) {
-    const icon = L.divIcon({ className: '', html: '<div class="lt-pin"></div>', iconSize: [16,16], iconAnchor: [8,8] });
-    S.mainMarkers[msg.sid] = L.marker(ll, { icon }).addTo(S.mainMap)
-      .bindPopup(`<b>${msg.name}</b><br>${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}<br>±${msg.acc}m`);
+  id('map-ph').style.display = 'none';
+  id('map-info').style.display = 'grid';
+  const ll   = [pos.lat, pos.lng];
+  const name = S.sessions[sid]?.name || 'User';
+
+  if (!S.markers[sid]) {
+    const icon = L.divIcon({ className:'', html:'<div class="lt-pin"></div>', iconSize:[16,16], iconAnchor:[8,8] });
+    S.markers[sid] = L.marker(ll, { icon }).addTo(S.map).bindPopup(`<b>${name}</b><br>±${pos.acc}m`);
   } else {
-    S.mainMarkers[msg.sid].setLatLng(ll);
-    S.mainMarkers[msg.sid].setPopupContent(`<b>${msg.name}</b><br>${msg.lat.toFixed(5)}, ${msg.lng.toFixed(5)}<br>±${msg.acc}m`);
+    S.markers[sid].setLatLng(ll);
+    S.markers[sid].setPopupContent(`<b>${name}</b><br>${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}<br>±${pos.acc}m`);
   }
-  S.mainMap.panTo(ll);
-  document.getElementById('map-count').textContent = Object.keys(S.mainMarkers).length + ' tracking';
-  document.getElementById('m-lat').textContent = msg.lat.toFixed(6) + '°';
-  document.getElementById('m-lng').textContent = msg.lng.toFixed(6) + '°';
-  document.getElementById('m-acc').textContent = '±' + msg.acc;
-  const d = new Date(msg.ts || Date.now());
-  document.getElementById('m-upd').textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  S.map.panTo(ll);
+  id('map-count').textContent = Object.keys(S.markers).length + ' tracking';
+  id('m-lat').textContent = pos.lat.toFixed(6) + '°';
+  id('m-lng').textContent = pos.lng.toFixed(6) + '°';
+  id('m-acc').textContent = '±' + pos.acc + 'm';
+  const d = new Date(pos.ts || Date.now());
+  id('m-upd').textContent = String(d.getHours()).padStart(2,'0') + ':'
+    + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+}
+
+function updatePosText(sid, pos) {
+  const el = id('pos-' + sid);
+  if (el) el.textContent = `📍 ${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
 }
 
 // ── SESSION LIST ───────────────────────────────────────
-function loadSavedSessions() {
+function loadSessions() {
   try {
     const saved = JSON.parse(localStorage.getItem('lt_sessions') || '{}');
-    if (Object.keys(saved).length > 0) {
+    if (Object.keys(saved).length) {
       Object.assign(S.sessions, saved);
+      id('link-result').style.display = 'block';
       renderSessions();
-      document.getElementById('link-result').style.display = 'block';
-      Object.keys(S.sessions).forEach(sid => listenForSession(sid));
+      Object.keys(S.sessions).forEach(startWatching);
     }
   } catch {}
 }
@@ -223,44 +231,82 @@ function saveSessions() {
 }
 
 function renderSessions() {
-  const el = document.getElementById('s-list');
+  const el = id('s-list');
   if (!Object.keys(S.sessions).length) {
-    el.innerHTML = '<div style="color:var(--dm);font-size:12px;padding:6px 0">No sessions yet.</div>';
-    return;
+    el.innerHTML = '<div style="color:var(--dm);font-size:12px;padding:8px 0">No sessions yet.</div>'; return;
   }
   el.innerHTML = '';
   Object.values(S.sessions).forEach(s => {
-    const d = document.createElement('div');
-    d.className = 'srow'; d.id = 'sr-' + s.sid;
-    d.innerHTML = `
-      <div class="sav">👤</div>
-      <div class="si"><div class="sn">${s.name}</div><div class="sm">${s.pur} · ${s.sid}</div></div>
-      <span class="sbadge b-p" id="bd-${s.sid}">PENDING</span>
-      <button class="btn btn-r" style="padding:6px 10px;font-size:10px" onclick="revokeSession('${s.sid}')">⛔ Revoke</button>`;
-    el.appendChild(d);
+    const row = document.createElement('div');
+    row.className = 'srow'; row.id = 'sr-' + s.sid;
+    row.innerHTML = buildSessionRow(s);
+    el.appendChild(row);
   });
 }
 
+function renderSessionRow(sid) {
+  const el = id('sr-' + sid);
+  const s  = S.sessions[sid];
+  if (!el || !s) return;
+  el.innerHTML = buildSessionRow(s);
+}
+
+function buildSessionRow(s) {
+  const isActive  = s.status === 'granted';
+  const isRevoked = ['revoked','admin-revoke','denied'].includes(s.status);
+
+  // Revoke button only when active/pending; delete always available
+  const revokeBtn = !isRevoked
+    ? `<button class="btn btn-r" style="padding:6px 10px;font-size:10px" onclick="revokeSession('${s.sid}')">⛔ Revoke</button>`
+    : '';
+  const deleteBtn = `<button class="btn btn-ghost" style="padding:6px 10px;font-size:10px" onclick="deleteSession('${s.sid}')" title="Remove from list">🗑️ Delete</button>`;
+
+  return `
+    <div class="sav">👤</div>
+    <div class="si">
+      <div class="sn">${s.name}</div>
+      <div class="sm" id="pos-${s.sid}">${s.pur} · ${s.sid}</div>
+    </div>
+    <span class="sbadge ${badgeClass(s.status)}" id="bd-${s.sid}">${badgeLabel(s.status)}</span>
+    <div style="display:flex;gap:6px;flex-shrink:0">${revokeBtn}${deleteBtn}</div>`;
+}
+
+function badgeClass(status) {
+  if (status === 'granted') return 'b-a';
+  if (['revoked','admin-revoke','denied'].includes(status)) return 'b-r';
+  return 'b-p';
+}
+function badgeLabel(status) {
+  const m = { granted:'ACTIVE', revoked:'REVOKED', denied:'DECLINED', 'admin-revoke':'REVOKED', pending:'PENDING' };
+  return m[status] || 'PENDING';
+}
+
 function setBadge(sid, state) {
-  const b = document.getElementById('bd-' + sid); if (!b) return;
-  const m = { a: ['b-a','ACTIVE'], p: ['b-p','PENDING'], r: ['b-r','REVOKED'] };
-  b.className = 'sbadge ' + (m[state]?.[0] || 'b-p');
-  b.textContent = m[state]?.[1] || state.toUpperCase();
+  // 'a'=active, 'r'=revoked, 'p'=pending
+  const el = id('bd-' + sid); if (!el) return;
+  const map = { a:['b-a','ACTIVE'], r:['b-r','REVOKED'], p:['b-p','PENDING'] };
+  el.className = 'sbadge ' + (map[state]?.[0] || 'b-p');
+  el.textContent = map[state]?.[1] || 'PENDING';
 }
 
 // ── TABS ───────────────────────────────────────────────
-window.tab = function (id) {
-  ['t-req','t-map','t-log'].forEach(t => document.getElementById(t).style.display = t === id ? 'block' : 'none');
-  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('on', ['t-req','t-map','t-log'][i] === id));
-  if (id === 't-map' && S.mainMap) setTimeout(() => S.mainMap.invalidateSize(), 80);
-};
+function switchTab(tabId) {
+  ['t-req','t-map','t-log'].forEach(t =>
+    id(t).style.display = t === tabId ? 'block' : 'none');
+  document.querySelectorAll('.tab').forEach((t, i) =>
+    t.classList.toggle('on', ['t-req','t-map','t-log'][i] === tabId));
+  if (tabId === 't-map' && S.map) setTimeout(() => S.map.invalidateSize(), 80);
+}
+window.tab = switchTab;
 
 // ── LOG ────────────────────────────────────────────────
 function addLog(msg) {
-  const el = document.getElementById('audit-log');
+  const el = id('audit-log');
   if (el.children.length === 1 && el.children[0].querySelector('.dm')) el.innerHTML = '';
-  const d = new Date();
-  const ts = d.getHours() + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  const now = new Date();
+  const ts  = String(now.getHours()).padStart(2,'0') + ':'
+            + String(now.getMinutes()).padStart(2,'0') + ':'
+            + String(now.getSeconds()).padStart(2,'0');
   const row = document.createElement('div'); row.className = 'lline';
   row.innerHTML = `<span class="lt2">${ts}</span><span class="lm">${msg}</span>`;
   el.insertBefore(row, el.firstChild);
@@ -268,10 +314,11 @@ function addLog(msg) {
 
 // ── TOAST ──────────────────────────────────────────────
 let _tt;
-function showToast(ico, msg) {
+function toast(ico, msg) {
   clearTimeout(_tt);
-  document.getElementById('t-ico').textContent = ico;
-  document.getElementById('t-msg').textContent = msg;
-  const t = document.getElementById('toast'); t.classList.add('on');
+  id('t-ico').textContent = ico; id('t-msg').textContent = msg;
+  const t = id('toast'); t.classList.add('on');
   _tt = setTimeout(() => t.classList.remove('on'), 3500);
 }
+
+function id(x) { return document.getElementById(x); }

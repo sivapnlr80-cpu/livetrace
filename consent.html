@@ -6,25 +6,32 @@
 <title>LiveTrace — Location Request</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="style.css"/>
+<style>
+  .loading-ring {
+    width:44px;height:44px;border:4px solid var(--br);
+    border-top-color:var(--g);border-radius:50%;
+    animation:spin .8s linear infinite;margin:0 auto 14px;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
-
 <header class="hdr">
   <div class="logo">📍</div>
   <div class="ttl">Live<span>Trace</span></div>
-  <div class="pill" id="hdr-pill">REQUEST</div>
+  <div class="pill" id="hdr-pill">LOADING</div>
 </header>
 
 <div class="wrap" style="max-width:460px">
 
   <!-- LOADING -->
-  <div id="loading-view" style="display:none;text-align:center;padding:60px 20px">
-    <div style="font-size:40px;margin-bottom:14px;animation:spin 1.2s linear infinite;display:inline-block">⏳</div>
+  <div id="loading-view" style="display:flex;flex-direction:column;align-items:center;padding:70px 20px;text-align:center">
+    <div class="loading-ring"></div>
     <p style="color:var(--dm);font-size:13px">Loading session...</p>
   </div>
 
-  <!-- CONSENT FORM -->
-  <div id="consent-view">
+  <!-- CONSENT -->
+  <div id="consent-view" style="display:none">
     <div class="cpage">
       <div class="ctop">
         <div style="font-size:50px;margin-bottom:14px;filter:drop-shadow(0 0 18px rgba(184,255,87,.4))">📍</div>
@@ -38,7 +45,7 @@
           <div class="mrow"><span class="mk">Purpose</span><span class="mv" id="c-pur">—</span></div>
           <div class="mrow"><span class="mk">Session</span><span class="mv dm" id="c-sid" style="font-size:10px">—</span></div>
         </div>
-        <div class="cnotice">⚠️ Your GPS will only be shared during this session. You can stop at any time. No data is stored after the session ends.</div>
+        <div class="cnotice">⚠️ Your GPS is shared only during this session. You can stop at any time. No data is stored after the session ends.</div>
         <div class="cbtns">
           <button class="btn btn-g" id="allow-btn" onclick="grantConsent()">✓ Allow &amp; Share</button>
           <button class="btn btn-ghost" onclick="denyConsent()">✗ Decline</button>
@@ -66,18 +73,13 @@
   <!-- DONE / ERROR -->
   <div id="done-view" style="display:none;text-align:center;padding:60px 20px">
     <div id="done-icon" style="font-size:50px;margin-bottom:14px">✅</div>
-    <h2 id="done-title" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px">Done</h2>
-    <p id="done-msg" style="color:var(--dm);font-size:13px;line-height:1.7;white-space:pre-wrap"></p>
+    <h2 id="done-title" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:10px">Done</h2>
+    <p id="done-msg" style="color:var(--dm);font-size:13px;line-height:1.8;white-space:pre-wrap"></p>
   </div>
 
 </div>
 
-<style>
-@keyframes spin { to { transform: rotate(360deg); } }
-</style>
-
 <div class="toast" id="toast"><span id="t-ico">✅</span><span id="t-msg">Done</span></div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module" src="consent.js"></script>
 </body>

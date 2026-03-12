@@ -1,189 +1,171 @@
-// consent.js — Recipient GPS sharing page
-import { saveConfig, loadConfig, fbGet, fbSet, fbListen } from './firebase.js';
+// consent.js — runs on recipient's device
+import { saveDbUrl, dbGet, dbSet, dbWatch } from './firebase.js';
 
-const params     = new URLSearchParams(window.location.search);
-const SID        = params.get('sid');
-const DB_URL     = params.get('dbUrl');   // embedded by sender in the link
+// Everything comes from the URL — recipient needs zero setup
+const p      = new URLSearchParams(location.search);
+const SID    = p.get('sid')   || '';
+const DB_URL = (p.get('dbUrl') || '').trim().replace(/\/$/, '');
 
-let watchId      = null;
-let shareTimer   = null;
-let shareMap     = null;
-let shareMarker  = null;
-let shareCnt     = 0;
-let shareStart   = 0;
-let sessionData  = null;
-let unlistenAdmin = null;
+let gpsWatch     = null;
+let elapsedTimer = null;
+let stopRevokePoll = null;
+let map          = null;
+let marker       = null;
+let count        = 0;
+let startTime    = 0;
+let session      = null;
 
-window.addEventListener('DOMContentLoaded', async () => {
+// ── BOOT ──────────────────────────────────────────────
+addEventListener('DOMContentLoaded', async () => {
+  show('loading-view');
+  setPill('LOADING');
 
-  // ── STEP 1: Validate link ──────────────────────────
-  if (!SID) {
-    return showDone('❌', 'Invalid Link', 'No session ID in this URL. Ask the sender for a fresh link.');
-  }
+  // 1. Validate URL params
+  if (!SID) return fatal('❌', 'Bad Link', 'No session ID. Ask sender for a new link.');
+  if (!DB_URL.startsWith('https://'))
+    return fatal('⚙️', 'Config Missing',
+      'Firebase URL missing from link.\n\nAsk the sender to:\n1. Open LiveTrace dashboard\n2. Save their Firebase URL\n3. Regenerate the link');
 
-  // ── STEP 2: Bootstrap Firebase config from URL ─────
-  // The sender embeds ?dbUrl=https://... in the link.
-  // This is the ONLY config the recipient needs.
-  if (!DB_URL || !DB_URL.startsWith('https://')) {
-    return showDone('⚙️', 'Config Missing',
-      'This link is missing the Firebase Database URL. ' +
-      'Ask the sender to regenerate the link — they must save their Firebase config first.');
-  }
+  // 2. Persist dbUrl so dbGet/dbSet helpers can use it
+  saveDbUrl(DB_URL);
 
-  // Save into localStorage so fbGet/fbSet/fbListen helpers work
-  saveConfig(DB_URL, '');
+  // 3. Load session
+  try { session = await dbGet(DB_URL, `sessions/${SID}`); }
+  catch(e) { return fatal('❌', 'Connection Error', 'Could not reach Firebase:\n' + e.message); }
 
-  // ── STEP 3: Load session from Firebase ────────────
-  showLoading(true);
-  try {
-    sessionData = await fbGet(`sessions/${SID}`);
-  } catch (e) {
-    return showDone('❌', 'Connection Failed',
-      'Could not reach Firebase. Check your internet and try again.\n\nError: ' + e.message);
-  } finally {
-    showLoading(false);
-  }
+  if (!session)
+    return fatal('❌', 'Not Found', 'Session not found or expired.');
+  if (['revoked','admin-revoke','denied'].includes(session.status))
+    return fatal('⛔', 'Session Ended', 'This session has already ended.');
 
-  if (!sessionData) {
-    return showDone('❌', 'Session Not Found', 'This session has expired or been deleted.');
-  }
-  if (['revoked', 'admin-revoke', 'denied'].includes(sessionData.status)) {
-    return showDone('⛔', 'Session Ended', 'This session has already ended or been revoked.');
-  }
-
-  // ── STEP 4: Show consent form ──────────────────────
-  document.getElementById('c-from').textContent = sessionData.me || 'Someone';
-  document.getElementById('c-name').textContent = sessionData.me || '—';
-  document.getElementById('c-dur').textContent  = sessionData.dur == 0 ? 'Until revoked' : sessionData.dur + ' minutes';
-  document.getElementById('c-pur').textContent  = sessionData.pur || '—';
-  document.getElementById('c-sid').textContent  = SID;
-
-  // Listen for admin revoke
-  unlistenAdmin = fbListen(`sessions/${SID}/status`, status => {
-    if (status === 'admin-revoke' || status === 'revoked') window.stopSharing();
-  });
+  // 4. Show consent form
+  setText('c-from', session.me || 'Someone');
+  setText('c-name', session.me || '—');
+  setText('c-dur',  session.dur == '0' ? 'Until revoked' : session.dur + ' minutes');
+  setText('c-pur',  session.pur || '—');
+  setText('c-sid',  SID);
+  setPill('REQUEST');
+  show('consent-view');
 });
 
-// ── GRANT ──────────────────────────────────────────────
-window.grantConsent = function () {
-  if (!navigator.geolocation) {
-    return toast('❌', 'GPS not available on this device');
-  }
-  const btn = document.getElementById('allow-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Getting GPS...';
+// ── ALLOW ─────────────────────────────────────────────
+window.grantConsent = function() {
+  if (!navigator.geolocation) return popToast('❌', 'GPS not available on this device');
+  const btn = id('allow-btn');
+  btn.disabled = true; btn.textContent = '⏳ Requesting GPS…';
 
-  navigator.geolocation.getCurrentPosition(
-    async () => {
-      try {
-        await fbSet(`sessions/${SID}/status`, 'granted');
-      } catch (e) {
-        toast('❌', 'Could not write to Firebase: ' + e.message);
-        btn.disabled = false; btn.textContent = '✓ Allow & Share'; return;
-      }
-      document.getElementById('consent-view').style.display  = 'none';
-      document.getElementById('sharing-view').style.display  = 'block';
-      document.getElementById('hdr-pill').innerHTML = '<span style="color:var(--g)">●</span> LIVE';
-      startSharing();
-    },
-    err => {
-      toast('❌', 'GPS error: ' + err.message);
-      btn.disabled = false; btn.textContent = '✓ Allow & Share';
-    },
-    { enableHighAccuracy: true, timeout: 15000 }
-  );
+  navigator.geolocation.getCurrentPosition(async () => {
+    // Write status = granted
+    try { await dbSet(DB_URL, `sessions/${SID}/status`, 'granted'); }
+    catch(e) { popToast('❌', 'Firebase error: ' + e.message); btn.disabled = false; btn.textContent = '✓ Allow & Share'; return; }
+
+    show('sharing-view');
+    setPill('LIVE');
+    startGPS();
+  }, err => {
+    popToast('❌', 'GPS: ' + err.message);
+    btn.disabled = false; btn.textContent = '✓ Allow & Share';
+  }, { enableHighAccuracy: true, timeout: 15000 });
 };
 
-// ── DENY ───────────────────────────────────────────────
-window.denyConsent = async function () {
-  try { await fbSet(`sessions/${SID}/status`, 'denied'); } catch {}
-  showDone('🚫', 'Request Declined', 'You declined to share your location. You may close this page.');
+// ── DENY ──────────────────────────────────────────────
+window.denyConsent = async function() {
+  try { await dbSet(DB_URL, `sessions/${SID}/status`, 'denied'); } catch {}
+  fatal('🚫', 'Declined', 'You declined to share. You may close this page.');
 };
 
-// ── START SHARING ──────────────────────────────────────
-function startSharing() {
-  shareCnt = 0; shareStart = Date.now();
-  const dur = parseInt(sessionData?.dur || 0);
+// ── GPS + PUSH TO FIREBASE ────────────────────────────
+function startGPS() {
+  startTime = Date.now();
+  const dur = parseInt(session?.dur || '0');
 
-  // Map
-  shareMap = L.map('share-map').setView([20, 78], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(shareMap);
+  // Init map
+  map = L.map('share-map').setView([20, 78], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map);
 
   // Elapsed timer
-  shareTimer = setInterval(() => {
-    const sec = Math.floor((Date.now() - shareStart) / 1000);
-    const m   = Math.floor(sec / 60);
-    document.getElementById('elapsed').textContent = m > 0 ? `${m}m ${sec % 60}s` : `${sec}s`;
-    if (dur > 0 && sec >= dur * 60) window.stopSharing();
+  elapsedTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    const m = Math.floor(s / 60);
+    setText('elapsed', m > 0 ? `${m}m ${s % 60}s` : `${s}s`);
+    if (dur > 0 && s >= dur * 60) window.stopSharing();
   }, 1000);
 
-  // GPS watch → push to Firebase
-  watchId = navigator.geolocation.watchPosition(
-    async pos => {
-      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
-      const acc = Math.round(accuracy);
-      shareCnt++;
+  // Poll for admin revoke
+  stopRevokePoll = dbWatch(DB_URL, `sessions/${SID}/status`, status => {
+    if (status === 'admin-revoke') window.stopSharing();
+  }, 4000);
 
-      document.getElementById('sh-lat').textContent = lat.toFixed(5) + '°';
-      document.getElementById('sh-lng').textContent = lng.toFixed(5) + '°';
-      document.getElementById('sh-acc').textContent = '±' + acc + 'm';
-      document.getElementById('sh-cnt').textContent = shareCnt;
+  // Watch GPS → push each update to Firebase
+  gpsWatch = navigator.geolocation.watchPosition(async pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const acc = Math.round(pos.coords.accuracy);
+    count++;
 
-      const ll = [lat, lng];
-      if (!shareMarker) {
-        const icon = L.divIcon({ className: '', html: '<div class="lt-pin"></div>', iconSize:[16,16], iconAnchor:[8,8] });
-        shareMarker = L.marker(ll, { icon }).addTo(shareMap);
-        shareMap.setView(ll, 15);
-      } else {
-        shareMarker.setLatLng(ll);
-        shareMap.panTo(ll);
-      }
+    // Update UI
+    setText('sh-lat', lat.toFixed(5) + '°');
+    setText('sh-lng', lng.toFixed(5) + '°');
+    setText('sh-acc', '±' + acc + 'm');
+    setText('sh-cnt', count);
 
-      try {
-        await fbSet(`positions/${SID}`, { lat, lng, acc, ts: Date.now() });
-      } catch (e) { console.warn('Firebase write:', e.message); }
-    },
-    err => toast('❌', 'GPS: ' + err.message),
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-  );
+    // Update map
+    const ll = [lat, lng];
+    if (!marker) {
+      const icon = L.divIcon({ className:'', html:'<div class="lt-pin"></div>', iconSize:[16,16], iconAnchor:[8,8] });
+      marker = L.marker(ll, { icon }).addTo(map);
+      map.setView(ll, 15);
+    } else {
+      marker.setLatLng(ll);
+      map.panTo(ll);
+    }
 
-  toast('✅', 'Sharing live with ' + (sessionData?.me || 'requester'));
+    // Push position to Firebase — dashboard watches this path
+    try {
+      await dbSet(DB_URL, `positions/${SID}`, { lat, lng, acc, ts: Date.now(), name: session?.rec || '' });
+    } catch(e) {
+      console.warn('Push failed:', e.message);
+    }
+
+  }, err => popToast('❌', 'GPS error: ' + err.message),
+  { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+
+  popToast('✅', 'Live — sharing with ' + (session?.me || 'requester'));
 }
 
-// ── STOP ───────────────────────────────────────────────
-window.stopSharing = async function () {
-  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-  clearInterval(shareTimer);
-  if (unlistenAdmin) { unlistenAdmin(); unlistenAdmin = null; }
+// ── STOP ──────────────────────────────────────────────
+window.stopSharing = async function() {
+  if (gpsWatch !== null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; }
+  clearInterval(elapsedTimer);
+  if (stopRevokePoll) { stopRevokePoll(); stopRevokePoll = null; }
   try {
-    await fbSet(`sessions/${SID}/status`, 'revoked');
-    await fbSet(`positions/${SID}`, null);
+    await dbSet(DB_URL, `sessions/${SID}/status`, 'revoked');
+    await dbSet(DB_URL, `positions/${SID}`,  { cleared: true });  // PUT null causes issues; use sentinel
   } catch {}
-  showDone('⛔', 'Sharing Stopped', 'Location access revoked. You may close this page.');
-  document.getElementById('hdr-pill').textContent = 'STOPPED';
+  setPill('STOPPED');
+  fatal('⛔', 'Sharing Stopped', 'Your location is no longer being shared. You may close this page.');
 };
 
-// ── HELPERS ────────────────────────────────────────────
-function showLoading(on) {
-  document.getElementById('loading-view').style.display = on ? 'block' : 'none';
-  document.getElementById('consent-view').style.display = on ? 'none'  : 'block';
+// ── HELPERS ───────────────────────────────────────────
+function id(x)         { return document.getElementById(x); }
+function setText(x, v) { const el = id(x); if (el) el.textContent = v; }
+function setPill(t)    { setText('hdr-pill', t); }
+
+function show(viewId) {
+  ['loading-view','consent-view','sharing-view','done-view']
+    .forEach(v => id(v).style.display = v === viewId ? (v === 'loading-view' ? 'flex' : 'block') : 'none');
 }
 
-function showDone(icon, title, msg) {
-  ['consent-view','sharing-view','loading-view'].forEach(id => {
-    document.getElementById(id).style.display = 'none';
-  });
-  document.getElementById('done-view').style.display  = 'block';
-  document.getElementById('done-icon').textContent    = icon;
-  document.getElementById('done-title').textContent   = title;
-  document.getElementById('done-msg').textContent     = msg;
+function fatal(icon, title, msg) {
+  show('done-view');
+  setText('done-icon', icon); setText('done-title', title); setText('done-msg', msg);
 }
 
-let _tt;
-function toast(ico, msg) {
-  clearTimeout(_tt);
-  document.getElementById('t-ico').textContent = ico;
-  document.getElementById('t-msg').textContent = msg;
-  const t = document.getElementById('toast'); t.classList.add('on');
-  _tt = setTimeout(() => t.classList.remove('on'), 3500);
+let _t;
+function popToast(ico, msg) {
+  clearTimeout(_t);
+  setText('t-ico', ico); setText('t-msg', msg);
+  const t = id('toast'); t.classList.add('on');
+  _t = setTimeout(() => t.classList.remove('on'), 4000);
 }
