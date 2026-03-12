@@ -40,9 +40,13 @@ function setFbStatus(msg, color) {
 
 // ── GENERATE LINK ──────────────────────────────────────
 window.generate = async () => {
+  // Auto-save whatever is in the input box right now (even if Save wasn't clicked)
+  const inputUrl = id('fb-url').value.trim();
+  if (inputUrl) saveDbUrl(inputUrl);
+
   const dbUrl = getDbUrl();
   if (!hasDbUrl()) {
-    toast('⚠️', 'Save your Firebase URL first');
+    toast('⚠️', 'Enter a valid Firebase Database URL first');
     id('firebase-setup-card').scrollIntoView({ behavior: 'smooth' }); return;
   }
   const me  = id('i-me').value.trim();

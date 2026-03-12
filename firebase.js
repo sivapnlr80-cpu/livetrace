@@ -9,7 +9,7 @@ export function getDbUrl() {
 }
 export function hasDbUrl() {
   const u = getDbUrl();
-  return u.startsWith('https://') && u.includes('firebaseio.com');
+  return u.startsWith('https://') && (u.includes('firebaseio.com') || u.includes('firebasedatabase.app'));
 }
 
 // ── RAW REST ──────────────────────────────────────────
@@ -59,6 +59,8 @@ export function dbWatch(dbUrl, path, callback, ms = 2500) {
 export async function testDb(dbUrl) {
   if (!dbUrl || !dbUrl.startsWith('https://'))
     return { ok: false, msg: 'URL must start with https://' };
+  if (!dbUrl.includes('firebaseio.com') && !dbUrl.includes('firebasedatabase.app'))
+    return { ok: false, msg: 'Does not look like a Firebase URL — check and try again' };
   try {
     const res = await fetch(`${dbUrl}/.json?shallow=true`);
     if (res.ok) return { ok: true, msg: 'Connected ✅' };
