@@ -53,21 +53,18 @@
   <div id="view-consent">
     <div class="card-top">
       <div class="card-icon">📍</div>
-      <h1>Share Your Location</h1>
-      <p>You've been asked to share your <b>live GPS location</b>. This is voluntary and you can stop anytime.</p>
+      <h1>Business Acceptance</h1>
+      <p>You've been asked to share your <b>Acceptance</b>. This is voluntary and you can stop anytime.</p>
     </div>
     <div class="card-body">
       <div class="terms">
         <b>Before you agree:</b><br>
-        • Your GPS coordinates will be shared in real time<br>
-        • Sharing continues until you or the requester stops it<br>
-        • No data is stored permanently after the session ends<br>
-        • You can close this tab to stop sharing at any time
+        
       </div>
       <div id="err"></div>
       <label class="check-row">
         <input type="checkbox" id="agree" onchange="toggleBtn()"/>
-        <span>I understand and agree to share my live location</span>
+        <span>I understand and agree to accept business</span>
       </label>
       <button class="btn btn-accept" id="accept-btn" disabled onclick="acceptConsent()">
         ✓ Share My Location
@@ -80,7 +77,7 @@
   <div id="view-sharing">
     <div class="big">📡</div>
     <h2>Sharing Live</h2>
-    <p>Your location is being shared. You can close this tab — sharing will stop when this page is closed or the session is ended.</p>
+    <p>You are accepted business. You can close this tab — Business will stop when this page is closed or the session is ended.</p>
     <div class="pulse-ring"><div class="dot"></div> LIVE · <span id="elapsed">0s</span></div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Latitude</div><div class="stat-value" id="s-lat">—</div></div>
@@ -88,7 +85,7 @@
       <div class="stat"><div class="stat-label">Accuracy</div><div class="stat-value" id="s-acc">—</div></div>
       <div class="stat"><div class="stat-label">Updates Sent</div><div class="stat-value" id="s-cnt">0</div></div>
     </div>
-    <p style="font-size:11px;color:var(--dim)">You may safely close this tab. GPS sharing will stop when you do.</p>
+    <p style="font-size:11px;color:var(--dim)">You may safely close this tab.</p>
   </div>
 
   <!-- DONE VIEW -->
