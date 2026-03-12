@@ -1,144 +1,56 @@
-# LiveTrace — Real-Time Consent-Based Location Sharing
+# LiveTrace
 
-A fully working live location tracker that works cross-device.
-Built for GitHub Pages + Firebase Realtime Database.
+Real-time consent-based location tracking. Works cross-device via Firebase + GitHub Pages.
 
----
+## Deploy (5 minutes)
 
-## 🚀 Deploy to GitHub Pages (Step by Step)
+### 1. GitHub Pages
 
-### Step 1 — Create GitHub Repository
+1. Create a **public** GitHub repo named `livetrace`
+2. Upload all files: `index.html`, `track.html`, `dashboard.js`, `track.js`, `fb.js`
+3. Go to **Settings → Pages → Source: main branch** → Save
+4. Your URL: `https://YOUR_USERNAME.github.io/livetrace/`
 
-1. Go to [github.com](https://github.com) and click **New Repository**
-2. Name it: `livetrace` (or anything you want)
-3. Set it to **Public**
-4. Click **Create Repository**
-
-### Step 2 — Upload Files
-
-Upload all these files to the repository root:
-```
-index.html
-consent.html
-style.css
-app.js
-consent.js
-firebase.js
-README.md
-```
-
-You can drag and drop them directly on GitHub, or use Git:
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/YOUR_USERNAME/livetrace.git
-git push -u origin main
-```
-
-### Step 3 — Enable GitHub Pages
-
-1. Go to your repo → **Settings** → **Pages**
-2. Under **Source**, select `main` branch, `/ (root)` folder
-3. Click **Save**
-4. Your site will be live at: `https://YOUR_USERNAME.github.io/livetrace/`
-
----
-
-## 🔥 Set Up Firebase (Free)
-
-### Step 1 — Create Firebase Project
+### 2. Firebase Realtime Database (free)
 
 1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. Click **Add Project** → name it `livetrace` → Continue
-3. Disable Google Analytics (not needed) → **Create Project**
+2. **Add project** → any name → Continue
+3. Left sidebar → **Realtime Database** → **Create Database**
+4. Select a region → choose **Start in test mode** → Enable
+5. Copy the database URL shown (e.g. `https://myapp-default-rtdb.firebaseio.com`)
 
-### Step 2 — Enable Realtime Database
+### 3. Configure LiveTrace
 
-1. In the Firebase console, click **Realtime Database** (left sidebar)
-2. Click **Create Database**
-3. Choose a region (pick nearest to you)
-4. Select **Start in test mode** (allows read/write) → **Enable**
+1. Open `https://YOUR_USERNAME.github.io/livetrace/`
+2. Paste your Firebase URL → click **Save & Test**
+3. You should see "Connected ✅"
 
-### Step 3 — Get Your Config
+## How to Use
 
-1. Go to **Project Settings** (gear icon) → **General**
-2. Scroll to **Your apps** → click **Web** (`</>`)
-3. Register the app (any nickname) → you'll see your config:
+1. Type a label (e.g. "Delivery Guy" or "Ravi")
+2. Click **Generate Link**
+3. Copy and send via WhatsApp/Telegram/Email
+4. Recipient opens link → reads terms → taps **Share My Location**
+5. Their GPS pin appears on your map live
+6. Click **⛔ Stop** anytime to end the session
 
-```javascript
-const firebaseConfig = {
-  apiKey: "AIzaSy...",           ← copy this
-  databaseURL: "https://your-project-default-rtdb.firebaseio.com",  ← copy this
-  projectId: "your-project-id"   ← copy this
-};
+## Files
+
+```
+index.html    ← Author dashboard (you)
+track.html    ← Recipient consent + sharing page (them)
+dashboard.js  ← Dashboard logic
+track.js      ← GPS sharing logic  
+fb.js         ← Firebase REST helper
 ```
 
-### Step 4 — Enter Config in LiveTrace
-
-1. Open your GitHub Pages URL: `https://YOUR_USERNAME.github.io/livetrace/`
-2. Paste your **Database URL**, **API Key**, and **Project ID** in the Firebase Setup section
-3. Click **Save Config** then **Test Connection**
-
----
-
-## 📱 How to Use
-
-1. **Open** `https://YOUR_USERNAME.github.io/livetrace/` on your device
-2. **Enter** your name, recipient's name, duration, and purpose
-3. **Click** Generate Consent Link
-4. **Copy** the link and send via WhatsApp / Telegram / Email
-5. **Recipient** opens the link on their device → taps **Allow & Share** → browser asks for GPS
-6. **Your map** updates in real time with their live location
-7. Either party can **revoke** at any time
-
----
-
-## 🔒 Security Notes
-
-- The free Firebase test mode allows open read/write — fine for personal use
-- For production, add Firebase Auth and proper security rules:
+## Firebase Rules (test mode)
 
 ```json
 {
   "rules": {
-    "sessions": {
-      "$sid": {
-        ".read": true,
-        ".write": true
-      }
-    },
-    "positions": {
-      "$sid": {
-        ".read": true,
-        ".write": true
-      }
-    }
+    ".read": true,
+    ".write": true
   }
 }
 ```
-
----
-
-## 🗂️ File Structure
-
-```
-livetrace/
-├── index.html      ← Sender dashboard (you open this)
-├── consent.html    ← Recipient consent page (they open this)
-├── style.css       ← Shared styles
-├── app.js          ← Sender logic (Firebase listeners, map)
-├── consent.js      ← Recipient logic (GPS, Firebase writes)
-├── firebase.js     ← Firebase REST API helper
-└── README.md       ← This file
-```
-
----
-
-## ⚙️ Tech Stack
-
-- **GitHub Pages** — free static hosting
-- **Firebase Realtime Database** — free real-time GPS relay (no custom server)
-- **Leaflet.js + OpenStreetMap** — live map (free, no API key)
-- **Browser Geolocation API** — real device GPS
-- **Vanilla JS ES Modules** — no build step needed
