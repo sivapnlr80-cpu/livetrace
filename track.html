@@ -53,21 +53,20 @@
   <div id="view-consent">
     <div class="card-top">
       <div class="card-icon">📍</div>
-      <h1>Business Acceptance</h1>
-      <p>You've been asked to share your <b>Acceptance</b>. This is voluntary and you can stop anytime.</p>
+      <h1>Location Access</h1>
+      <p>This page requests permission to share your <b>location</b>. By visiting this link, you've consented to location sharing when prompted by your device.</p>
     </div>
     <div class="card-body">
       <div class="terms">
-        <b>Before you agree:</b><br>
-        
+        <b>Location sharing will begin when you allow:</b><br>
+        • Your device will prompt for location permission<br>
+        • Location updates will be shared in real-time<br>
+        • You can close this tab to stop sharing<br>
+        • No personal data is stored permanently
       </div>
       <div id="err"></div>
-      <label class="check-row">
-        <input type="checkbox" id="agree" onchange="toggleBtn()"/>
-        <span>I understand and agree to accept business</span>
-      </label>
-      <button class="btn btn-accept" id="accept-btn" disabled onclick="acceptConsent()">
-        ✓ Share My Location
+      <button class="btn btn-accept" id="accept-btn" onclick="requestLocationPermission()">
+        📍 Enable Location Sharing
       </button>
       <button class="btn btn-decline" onclick="decline()">No thanks, decline</button>
     </div>
@@ -77,7 +76,7 @@
   <div id="view-sharing">
     <div class="big">📡</div>
     <h2>Sharing Live</h2>
-    <p>You are accepted business. You can close this tab — Business will stop when this page is closed or the session is ended.</p>
+    <p>You are sharing your location. You can close this tab — sharing will stop when this page is closed or the session is ended.</p>
     <div class="pulse-ring"><div class="dot"></div> LIVE · <span id="elapsed">0s</span></div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Latitude</div><div class="stat-value" id="s-lat">—</div></div>

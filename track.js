@@ -33,14 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (session.status === 'stopped') return showDone('⛔', 'Session Ended', 'This tracking session has already ended.');
 });
 
-// ── TOGGLE ACCEPT BUTTON ──────────────────────────────
-window.toggleBtn = function () {
-  document.getElementById('accept-btn').disabled =
-    !document.getElementById('agree').checked;
-};
-
-// ── ACCEPT CONSENT ────────────────────────────────────
-window.acceptConsent = function () {
+// ── REQUEST LOCATION PERMISSION ────────────────────────────
+window.requestLocationPermission = function () {
   if (!navigator.geolocation) {
     showErr('Your device does not support GPS. Cannot share location.');
     return;
